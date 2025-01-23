@@ -1,0 +1,1466 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>本地ZPL标签打印</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'><path fill='%233498db' d='M0 448V64h18v384H0zm32-384v384h96V64H32zm128 384h96V64h-96v384zm128 0h96V64h-96v384zm128 0h32V64h-32v384z'/></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --background-color: #f8f9fa;
+            --text-color: #2c3e50;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: white;
+            box-shadow: var(--box-shadow);
+            border-radius: var(--border-radius);
+        }
+
+        h2 {
+            color: var(--primary-color);
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 2rem;
+            font-size: 2rem;
+            position: relative;
+        }
+
+        h2::after {
+            content: '';
+            display: block;
+            width: 50px;
+            height: 3px;
+            background: var(--secondary-color);
+            margin: 10px auto;
+        }
+
+        .top-controls {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .store-input {
+            padding: 0.8rem 1.2rem;
+            width: 150px;
+            border: 2px solid var(--secondary-color);
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            outline: none;
+            position: relative;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .store-input:focus {
+            box-shadow: 0 0 20px rgba(52, 152, 219, 0.4);
+            transform: translateY(-2px);
+            border-color: #2980b9;
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0);
+                box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+            }
+            50% {
+                transform: translateY(-5px);
+                box-shadow: 0 8px 16px rgba(52, 152, 219, 0.3);
+            }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-6px) rotate(-2deg); }
+            20%, 40%, 60%, 80% { transform: translateX(6px) rotate(2deg); }
+        }
+
+        .store-input::placeholder {
+            color: #95a5a6;
+            transition: all 0.3s ease;
+        }
+
+        .store-input:focus::placeholder {
+            opacity: 0.5;
+            transform: translateX(10px);
+        }
+
+        .button {
+            padding: 0.8rem 1.5rem;
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .file-drop-zone {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 2px dashed var(--secondary-color);
+            border-radius: 4px;
+            padding: 2rem;
+            margin: 10px 0;
+            background-color: rgba(52, 152, 219, 0.05);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-drop-zone.dragover {
+            background-color: rgba(52, 152, 219, 0.1);
+            border-color: var(--secondary-color);
+            transform: scale(1.02);
+        }
+
+        .file-drop-zone p {
+            margin: 0;
+            color: var(--text-color);
+            font-size: 1.1rem;
+        }
+
+        .file-drop-zone i {
+            font-size: 2rem;
+            color: var(--secondary-color);
+            margin-bottom: 1rem;
+        }
+
+        .file-drop-left {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+
+        .label-preview {
+            background: white;
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            margin: 10px 0;
+        }
+
+        .label-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: rgba(52, 152, 219, 0.05);
+            border-radius: var(--border-radius);
+            transition: all 0.3s ease;
+        }
+
+        .label-container:hover {
+            transform: translateX(5px);
+        }
+
+        .print-single {
+            padding: 0.8rem 1.5rem;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-left: 1rem;
+        }
+
+        .print-single:hover {
+            background-color: #c0392b;
+            transform: translateY(-2px);
+        }
+
+        .print-single.printed {
+            background-color: #27ae60;
+            pointer-events: auto;
+        }
+        
+        .print-single.printed:hover {
+            background-color: #219a52;
+        }
+
+        .export-button {
+            padding: 0.8rem 1.5rem;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            margin-left: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .export-button:hover {
+            background-color: #34495e;
+            transform: translateY(-2px);
+        }
+
+        #fileInput {
+            margin: 10px 0;
+        }
+
+        .label {
+            width: 60mm;
+            height: 40mm;
+            position: relative;
+            border: 1px solid #ccc;
+            margin: 10px 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .label-content {
+            width: 100%;
+            position: relative;
+            height: 30mm;
+            margin-top: 5mm;
+        }
+        .barcode-container {
+            position: absolute;
+            top: 0mm;
+            left: 10mm;
+            width: 30mm;
+            height: 12mm;
+            text-align: center;
+        }
+        .text-code {
+            position: absolute;
+            top: 14mm;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+        }
+        .product-name {
+            position: absolute;
+            top: 18mm;
+            left: 5mm;
+            width: 50mm;
+            font-size: 10px;
+            line-height: 1.2;
+            text-align: left;
+        }
+        .sku {
+            position: absolute;
+            top: 26mm;
+            left: 5mm;
+            font-size: 10px;
+        }
+        .quantity {
+            position: absolute;
+            bottom: 2mm;
+            right: 5mm;
+            font-size: 8px;
+            color: #666;
+        }
+        .store-name {
+            position: absolute;
+            top: -4mm;
+            right: 5mm;
+            font-size: 8px;
+            color: #666;
+        }
+        .stats-container {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: rgba(52, 152, 219, 0.05);
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: white;
+            border-radius: var(--border-radius);
+            flex: 1;
+            transition: all 0.3s ease;
+        }
+        
+        .stat-item:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--box-shadow);
+        }
+        
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-color);
+            margin-bottom: 0.3rem;
+        }
+        
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+        
+        .stat-value.printed {
+            color: #27ae60;
+        }
+        
+        .stat-value.pending {
+            color: var(--accent-color);
+        }
+
+        .fixed-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: white;
+            padding: 1rem 2rem;
+            box-shadow: var(--box-shadow);
+            transition: transform 0.3s ease;
+        }
+
+        /* 分离统计栏的样式 */
+        .stats-wrapper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            background: white;
+            transform: translateY(-100%);
+            transition: transform 0.3s ease;
+        }
+
+        .stats-wrapper.visible {
+            transform: translateY(0);
+            box-shadow: var(--box-shadow);
+        }
+
+        .fixed-header.hidden {
+            transform: translateY(-100%);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .main-content {
+            margin-top: 320px;  /* 增加顶部边距以适应统计栏的高度 */
+        }
+
+        .nav-button {
+            padding: 12px 24px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        .nav-button:hover {
+            animation: none;
+            transform: translateY(-2px) scale(1.05);
+            background: #c0392b;
+            box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
+        }
+
+        .nav-button:active {
+            transform: scale(0.95);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+            }
+            50% {
+                transform: scale(1.05);
+                box-shadow: 0 8px 25px rgba(231, 76, 60, 0.4);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+            }
+        }
+
+        .beta-badge {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            color: white;
+            padding: 5px 15px;
+            font-size: 12px;
+            font-weight: 600;
+            box-shadow: 0 2px 10px rgba(52, 152, 219, 0.3);
+            border-radius: 4px;
+            margin-right: 10px;
+            animation: glow 2s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% {
+                box-shadow: 0 2px 10px rgba(52, 152, 219, 0.3);
+                transform: scale(1);
+            }
+            50% {
+                box-shadow: 0 5px 20px rgba(52, 152, 219, 0.5);
+                transform: scale(1.05);
+            }
+        }
+
+        /* 登录界面样式 */
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(52, 152, 219, 0.95), rgba(41, 128, 185, 0.95));
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(8px);
+            transition: all 0.5s ease;
+        }
+
+        .login-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            width: 300px;
+            animation: slideIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-container::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(
+                45deg,
+                transparent,
+                rgba(255, 255, 255, 0.1),
+                transparent
+            );
+            transform: rotate(45deg);
+            animation: shine 3s infinite;
+            pointer-events: none;
+        }
+
+        @keyframes shine {
+            0% {
+                transform: translateX(-100%) rotate(45deg);
+            }
+            100% {
+                transform: translateX(100%) rotate(45deg);
+            }
+        }
+
+        .login-title {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .login-title::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50px;
+            height: 2px;
+            background: #3498db;
+            transition: width 0.3s ease;
+        }
+
+        .login-title:hover::after {
+            width: 100px;
+        }
+
+        .login-input {
+            width: 100%;
+            padding: 0.8rem;
+            margin-bottom: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: #f8f9fa;
+        }
+
+        .login-input:focus {
+            border-color: #3498db;
+            box-shadow: 0 0 15px rgba(52, 152, 219, 0.3);
+            outline: none;
+            transform: translateY(-2px);
+            background: white;
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 0.8rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s ease, height 0.6s ease;
+        }
+
+        .login-button:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .login-button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .login-button:active {
+            transform: scale(0.98);
+        }
+
+        .login-error {
+            color: #e74c3c;
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 14px;
+            opacity: 0;
+            transition: all 0.3s ease;
+            transform: translateY(-10px);
+        }
+
+        .login-error.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-container">
+            <h2 class="login-title">登录系统</h2>
+            <input type="text" class="login-input" id="username" placeholder="用户名" autocomplete="off">
+            <input type="password" class="login-input" id="password" placeholder="密码">
+            <button class="login-button" onclick="handleLogin()">登录</button>
+            <div class="login-error" id="loginError">用户名或密码错误</div>
+        </div>
+    </div>
+
+    <div class="fixed-header">
+        <div class="header-content">
+            <h2><i class="fas fa-tags"></i> ZPL标签打印系统</h2>
+            <div class="top-controls">
+                <div class="beta-badge">Beta 0.0001</div>
+                <button class="button" onclick="handlePrint()">
+                    <i class="fas fa-print"></i> 直接打印
+                </button>
+                <button class="button" onclick="previewLabels()">
+                    <i class="fas fa-eye"></i> 预览标签
+                </button>
+                <input type="text" id="storeNameInput" class="store-input" placeholder="输入店名" onchange="updateStoreNames()">
+                <button class="export-button" onclick="exportToExcel()">
+                    <i class="fas fa-file-excel"></i> 导出Excel出库单
+                </button>
+            </div>
+            <div class="file-drop-zone" id="dropZone">
+                <div class="file-drop-left">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <input type="file" id="fileInput" accept=".txt,.zpl" style="display: none;" />
+                    <p>将文件拖放到此处，或点击选择文件</p>
+                </div>
+                <button class="nav-button" onclick="window.location.href='index2.html'">
+                    <i class="fas fa-qrcode"></i> QRcode
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="stats-wrapper">
+        <div class="header-content">
+            <div class="stats-container" id="statsContainer" style="display: none;">
+                <div class="stat-item">
+                    <span class="stat-label">SKU总数</span>
+                    <span class="stat-value" id="totalSKUs">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">标签总数</span>
+                    <span class="stat-value" id="totalLabels">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">已打印</span>
+                    <span class="stat-value printed" id="printedLabels">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">待打印</span>
+                    <span class="stat-value pending" id="pendingLabels">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="main-content">
+        <div class="container">
+            <div id="labelPreview" class="label-preview"></div>
+        </div>
+    </div>
+
+    <script>
+        let zplContent = '';
+
+        // 特殊字符映射表
+        const specialCharsMap = {
+            // 葡萄牙语元音重音符号
+            '_C3_80': 'À', // A带重音符
+            '_C3_81': 'Á', // A带重音
+            '_C3_82': 'Â', // A带扬抑符
+            '_C3_83': 'Ã', // A带波浪符
+            '_C3_84': 'Ä', // A带分音符
+            '_C3_85': 'Å', // A带圆圈
+            '_C3_86': 'Æ', // AE连字
+            '_C3_87': 'Ç', // C带软音符
+            '_C3_88': 'È', // E带重音符
+            '_C3_89': 'É', // E带重音
+            '_C3_8A': 'Ê', // E带扬抑符
+            '_C3_8B': 'Ë', // E带分音符
+            '_C3_8C': 'Ì', // I带重音符
+            '_C3_8D': 'Í', // I带重音
+            '_C3_8E': 'Î', // I带扬抑符
+            '_C3_8F': 'Ï', // I带分音符
+            '_C3_90': 'Ð', // ETH
+            '_C3_91': 'Ñ', // N带波浪符
+            '_C3_92': 'Ò', // O带重音符
+            '_C3_93': 'Ó', // O带重音
+            '_C3_94': 'Ô', // O带扬抑符
+            '_C3_95': 'Õ', // O带波浪符
+            '_C3_96': 'Ö', // O带分音符
+            '_C3_98': 'Ø', // O带斜线
+            '_C3_99': 'Ù', // U带重音符
+            '_C3_9A': 'Ú', // U带重音
+            '_C3_9B': 'Û', // U带扬抑符
+            '_C3_9C': 'Ü', // U带分音符
+            '_C3_9D': 'Ý', // Y带重音
+            '_C3_9E': 'Þ', // THORN
+            '_C3_9F': 'ß', // 锐音符号
+            '_C3_A0': 'à', // a带重音符
+            '_C3_A1': 'á', // a带重音
+            '_C3_A2': 'â', // a带扬抑符
+            '_C3_A3': 'ã', // a带波浪符
+            '_C3_A4': 'ä', // a带分音符
+            '_C3_A5': 'å', // a带圆圈
+            '_C3_A6': 'æ', // ae连字
+            '_C3_A7': 'ç', // c带软音符
+            '_C3_A8': 'è', // e带重音符
+            '_C3_A9': 'é', // e带重音
+            '_C3_AA': 'ê', // e带扬抑符
+            '_C3_AB': 'ë', // e带分音符
+            '_C3_AC': 'ì', // i带重音符
+            '_C3_AD': 'í', // i带重音
+            '_C3_AE': 'î', // i带扬抑符
+            '_C3_AF': 'ï', // i带分音符
+            '_C3_B0': 'ð', // eth
+            '_C3_B1': 'ñ', // n带波浪符
+            '_C3_B2': 'ò', // o带重音符
+            '_C3_B3': 'ó', // o带重音
+            '_C3_B4': 'ô', // o带扬抑符
+            '_C3_B5': 'õ', // o带波浪符
+            '_C3_B6': 'ö', // o带分音符
+            '_C3_B8': 'ø', // o带斜线
+            '_C3_B9': 'ù', // u带重音符
+            '_C3_BA': 'ú', // u带重音
+            '_C3_BB': 'û', // u带扬抑符
+            '_C3_BC': 'ü', // u带分音符
+            '_C3_BD': 'ý', // y带重音
+            '_C3_BE': 'þ', // thorn
+            '_C3_BF': 'ÿ', // y带分音符
+
+            // 其他常用特殊字符
+            '_2D': '-',    // 连字符
+            '_20': ' ',    // 空格
+            '_28': '(',    // 左括号
+            '_29': ')',    // 右括号
+            '_2E': '.',    // 点
+            '_2F': '/',    // 斜杠
+            '_26': '&',    // &符号
+            '_25': '%',    // 百分号
+            '_40': '@',    // @符号
+            '_2B': '+',    // 加号
+            '_3D': '=',    // 等号
+            '_21': '!',    // 感叹号
+            '_3F': '?',    // 问号
+            '_2C': ',',    // 逗号
+            '_3B': ';',    // 分号
+            '_3A': ':',    // 冒号
+            '_5F': '_',    // 下划线
+            '_7C': '|',    // 竖线
+            '_5B': '[',    // 左方括号
+            '_5D': ']',    // 右方括号
+            '_7B': '{',    // 左花括号
+            '_7D': '}'     // 右花括号
+        };
+
+        // 改进特殊字符处理函数
+        function replaceSpecialChars(text) {
+            if (!text) return '';
+            
+            let result = text;
+            // 先处理连续的特殊字符序列
+            for (let key in specialCharsMap) {
+                const regex = new RegExp(key, 'g');
+                result = result.replace(regex, specialCharsMap[key]);
+            }
+            
+            // 处理HTML实体
+            result = result.replace(/&amp;/g, '&')
+                         .replace(/&lt;/g, '<')
+                         .replace(/&gt;/g, '>')
+                         .replace(/&quot;/g, '"')
+                         .replace(/&#39;/g, "'");
+            
+            return result;
+        }
+
+        function parseZPL(zpl) {
+            const labels = [];
+            const labelSegments = zpl.split('^XA').filter(segment => segment.trim());
+            
+            for(let segment of labelSegments) {
+                const label = {
+                    barcode: '',
+                    productName: '',
+                    sku: '',
+                    color: ''
+                };
+
+                // 提取条形码 (BCN格式)
+                const barcodeMatch = segment.match(/\^BCN,[^~]*?\^FD([A-Z0-9]+)\^FS/);
+                if(barcodeMatch) {
+                    label.barcode = barcodeMatch[1];
+                }
+
+                // 提取产品名称（改进正则表达式以匹配更多情况）
+                const nameMatch = segment.match(/\^FB410,[^~]*?\^FH\^FD([^\^]+)\^FS/);
+                if(nameMatch) {
+                    label.productName = replaceSpecialChars(nameMatch[1].trim());
+                }
+
+                // 提取SKU（改进正则表达式以处理特殊字符）
+                const skuMatch = segment.match(/SKU:\s*([A-Z0-9_][^\^~]*)/);
+                if(skuMatch) {
+                    label.sku = replaceSpecialChars(skuMatch[1].trim());
+                }
+
+                // 提取打印数量
+                const pqMatch = segment.match(/\^PQ(\d+)/);
+                if(pqMatch) {
+                    label.quantity = parseInt(pqMatch[1]);
+                }
+
+                if(label.barcode) {
+                    labels.push(label);
+                }
+            }
+            
+            return labels;
+        }
+
+        function previewLabels() {
+            if(!zplContent) {
+                alert('请先选择ZPL文件');
+                return;
+            }
+
+            const labels = parseZPL(zplContent);
+            const previewDiv = document.getElementById('labelPreview');
+            previewDiv.innerHTML = '';
+
+            labels.forEach(label => {
+                const containerDiv = document.createElement('div');
+                containerDiv.className = 'label-container';
+
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'label';
+                
+                const labelContent = `
+                    <div class="label-content">
+                        <div class="barcode-container">
+                            <svg id="barcode_${label.barcode}"></svg>
+                        </div>
+                        <div class="text-code">${label.barcode}</div>
+                        <div class="product-name">${label.productName}</div>
+                        <div class="sku">SKU: ${label.sku}</div>
+                        <div class="quantity">QT: ${label.quantity || 1}</div>
+                        <div class="store-name">${document.getElementById('storeNameInput')?.value || ''}</div>
+                    </div>
+                `;
+
+                labelDiv.innerHTML = labelContent;
+                containerDiv.appendChild(labelDiv);
+                
+                // 修改打印按钮文字
+                const printButton = document.createElement('button');
+                printButton.className = 'print-single';
+                printButton.innerHTML = `<i class="fas fa-print"></i> 打印 ${label.quantity || 1} 个标签`;
+                printButton.onclick = () => printSingleLabel(label, document.getElementById('storeNameInput')?.value || '');
+                containerDiv.appendChild(printButton);
+                
+                previewDiv.appendChild(containerDiv);
+                
+                JsBarcode(`#barcode_${label.barcode}`, label.barcode, {
+                    format: "code128",
+                    width: 1.2,
+                    height: 40,
+                    displayValue: false,
+                    margin: 0
+                });
+            });
+            updateStats();
+        }
+
+        function handlePrint() {
+            if(!zplContent) {
+                alert('请先选择ZPL文件');
+                return;
+            }
+
+            const labels = parseZPL(zplContent);
+            const printWindow = window.open('', '_blank');
+            
+            const printContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"><\/script>
+                    <style>
+                        @page {
+                            size: 60mm 40mm;
+                            margin: 0;
+                        }
+                        body {
+                            margin: 0;
+                            font-family: Arial, sans-serif;
+                        }
+                        .label {
+                            width: 60mm;
+                            height: 40mm;
+                            position: relative;
+                            page-break-after: always;
+                            box-sizing: border-box;
+                            display: flex;
+                            flex-direction: column;
+                            justify-content: center;
+                            align-items: center;
+                        }
+                        .label-content {
+                            width: 100%;
+                            position: relative;
+                            height: 30mm;
+                            margin-top: 5mm;
+                        }
+                        .barcode-container {
+                            position: absolute;
+                            top: 0mm;
+                            left: 10mm;
+                            width: 30mm;
+                            height: 12mm;
+                            text-align: center;
+                        }
+                        .text-code {
+                            position: absolute;
+                            top: 14mm;
+                            width: 100%;
+                            text-align: center;
+                            font-size: 12px;
+                        }
+                        .product-name {
+                            position: absolute;
+                            top: 18mm;
+                            left: 5mm;
+                            width: 50mm;
+                            font-size: 10px;
+                            line-height: 1.2;
+                            text-align: left;
+                        }
+                        .sku {
+                            position: absolute;
+                            top: 26mm;
+                            left: 5mm;
+                            font-size: 10px;
+                        }
+                        .quantity {
+                            position: absolute;
+                            bottom: 2mm;
+                            right: 5mm;
+                            font-size: 8px;
+                            color: #666;
+                        }
+                        .store-name {
+                            position: absolute;
+                            top: -4mm;
+                            right: 5mm;
+                            font-size: 8px;
+                            color: #666;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${labels.map(label => {
+                        const copies = new Array(label.quantity || 1).fill(0);
+                        return copies.map((_, i) => `
+                            <div class="label">
+                                <div class="label-content">
+                                    <div class="barcode-container">
+                                        <svg id="barcode_${label.barcode}_${i}"></svg>
+                                    </div>
+                                    <div class="text-code">${label.barcode}</div>
+                                    <div class="product-name">${label.productName}</div>
+                                    <div class="sku">SKU: ${label.sku}</div>
+                                    <div class="quantity">QT: ${label.quantity || 1}</div>
+                                    <div class="store-name">${document.getElementById('storeNameInput')?.value || ''}</div>
+                                </div>
+                            </div>
+                        `).join('')
+                    }).join('')}
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            
+            printWindow.onload = function() {
+                labels.forEach(label => {
+                    const copies = new Array(label.quantity || 1).fill(0);
+                    copies.forEach((_, i) => {
+                        JsBarcode(
+                            printWindow.document.querySelector(`#barcode_${label.barcode}_${i}`),
+                            label.barcode,
+                            {
+                                format: "code128",
+                                width: 1.2,
+                                height: 40,
+                                displayValue: false,
+                                margin: 0
+                            }
+                        );
+                    });
+                });
+                
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                }, 500);
+            };
+            
+            printWindow.document.close();
+        }
+
+        function printSingleLabel(label, storeName = '') {
+            const printButton = event.target;
+            const printWindow = window.open('', '_blank');
+            
+            const printContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"><\/script>
+                    <style>
+                        @page {
+                            size: 60mm 40mm;
+                            margin: 0;
+                        }
+                        body {
+                            margin: 0;
+                            font-family: Arial, sans-serif;
+                        }
+                        .label {
+                            width: 60mm;
+                            height: 40mm;
+                            position: relative;
+                            page-break-after: always;
+                            box-sizing: border-box;
+                            display: flex;
+                            flex-direction: column;
+                            justify-content: center;
+                            align-items: center;
+                        }
+                        .label-content {
+                            width: 100%;
+                            position: relative;
+                            height: 30mm;
+                            margin-top: 5mm;
+                        }
+                        .barcode-container {
+                            position: absolute;
+                            top: 0mm;
+                            left: 10mm;
+                            width: 30mm;
+                            height: 12mm;
+                            text-align: center;
+                        }
+                        .text-code {
+                            position: absolute;
+                            top: 14mm;
+                            width: 100%;
+                            text-align: center;
+                            font-size: 12px;
+                        }
+                        .product-name {
+                            position: absolute;
+                            top: 18mm;
+                            left: 5mm;
+                            width: 50mm;
+                            font-size: 10px;
+                            line-height: 1.2;
+                            text-align: left;
+                        }
+                        .sku {
+                            position: absolute;
+                            top: 26mm;
+                            left: 5mm;
+                            font-size: 10px;
+                        }
+                        .quantity {
+                            position: absolute;
+                            bottom: 2mm;
+                            right: 5mm;
+                            font-size: 8px;
+                            color: #666;
+                        }
+                        .store-name {
+                            position: absolute;
+                            top: -4mm;
+                            right: 5mm;
+                            font-size: 8px;
+                            color: #666;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${new Array(label.quantity || 1).fill(0).map((_, i) => `
+                        <div class="label">
+                            <div class="label-content">
+                                <div class="barcode-container">
+                                    <svg id="barcode_${label.barcode}_${i}"></svg>
+                                </div>
+                                <div class="text-code">${label.barcode}</div>
+                                <div class="product-name">${label.productName}</div>
+                                <div class="sku">SKU: ${label.sku}</div>
+                                <div class="quantity">QT: ${label.quantity || 1}</div>
+                                <div class="store-name">${storeName}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            
+            printWindow.onload = function() {
+                new Array(label.quantity || 1).fill(0).forEach((_, i) => {
+                    JsBarcode(
+                        printWindow.document.querySelector(`#barcode_${label.barcode}_${i}`),
+                        label.barcode,
+                        {
+                            format: "code128",
+                            width: 1.2,
+                            height: 40,
+                            displayValue: false,
+                            margin: 0
+                        }
+                    );
+                });
+                
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                    // 修改打印完成后的按钮文字
+                    printButton.classList.add('printed');
+                    printButton.innerHTML = `<i class="fas fa-check"></i> 已打印 ${label.quantity || 1} 个标签`;
+                    updateStats();
+                }, 500);
+            };
+            
+            printWindow.document.close();
+        }
+
+        function updateStoreNames() {
+            const storeName = document.getElementById('storeNameInput').value;
+            document.querySelectorAll('.store-name').forEach(element => {
+                element.textContent = storeName;
+            });
+        }
+
+        function exportToExcel() {
+            if(!zplContent) {
+                alert('请先选择ZPL文件');
+                return;
+            }
+
+            const labels = parseZPL(zplContent);
+            
+            // 准备Excel数据
+            const excelData = [
+                ['SKU*', '数量*\n(限制 1-999999)'],
+                ...labels.map(label => {
+                    const quantity = label.quantity || 1;
+                    if (quantity < 1 || quantity > 999999) {
+                        alert(`SKU: ${label.sku} 的数量 ${quantity} 超出范围(1-999999)`);
+                        return null;
+                    }
+                    return [
+                        label.sku,
+                        quantity
+                    ]
+                }).filter(row => row !== null)
+            ];
+
+            // 创建工作簿
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+            // 设置列宽和行高
+            const colWidths = [
+                { wch: 15 },
+                { wch: 25 }
+            ];
+            ws['!rows'] = [{ hpt: 30 }];
+            ws['!cols'] = colWidths;
+
+            if(ws['B1']) {
+                ws['B1'].s = {
+                    alignment: {
+                        wrapText: true,
+                        vertical: 'center'
+                    }
+                };
+            }
+
+            XLSX.utils.book_append_sheet(wb, ws, "SKU数量");
+
+            // 获取店名和当前日期
+            const storeName = document.getElementById('storeNameInput').value.trim();
+            const now = new Date();
+            const date = now.getDate().toString().padStart(2, '0');
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            
+            // 构建文件名
+            let fileName;
+            if (storeName) {
+                fileName = `${storeName}${date}${month}.xlsx`;
+            } else {
+                fileName = `SKU数量统计_${date}${month}.xlsx`;
+            }
+
+            XLSX.writeFile(wb, fileName);
+        }
+
+        // 添加拖放功能
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        // 点击区域触发文件选择
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // 阻止默认拖放行为
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // 添加视觉反馈
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('dragover');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('dragover');
+        }
+
+        // 处理文件拖放
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const file = dt.files[0];
+            
+            if (file && (file.name.endsWith('.txt') || file.name.endsWith('.zpl'))) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    zplContent = e.target.result;
+                    previewLabels();
+                };
+                reader.readAsText(file);
+            } else {
+                alert('请选择.txt或.zpl文件');
+            }
+        }
+
+        // 修改原有的文件输入处理
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    zplContent = e.target.result;
+                    previewLabels();
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // 添加统计信息更新函数
+        function updateStats() {
+            const labels = parseZPL(zplContent);
+            const statsContainer = document.getElementById('statsContainer');
+            
+            if (labels.length > 0) {
+                const totalSKUs = labels.length;
+                const totalLabels = labels.reduce((sum, label) => sum + (label.quantity || 1), 0);
+                // 计算已打印标签的总数
+                const printedLabels = Array.from(document.querySelectorAll('.print-single.printed'))
+                    .reduce((sum, button) => {
+                        // 从按钮文本中提取数量
+                        const match = button.innerHTML.match(/已打印\s*(\d+)\s*个标签/);
+                        return sum + (match ? parseInt(match[1]) : 0);
+                    }, 0);
+                const pendingLabels = totalLabels - printedLabels;
+
+                document.getElementById('totalSKUs').textContent = totalSKUs;
+                document.getElementById('totalLabels').textContent = totalLabels;
+                document.getElementById('printedLabels').textContent = printedLabels;
+                document.getElementById('pendingLabels').textContent = pendingLabels;
+                
+                statsContainer.style.display = 'flex';
+            } else {
+                statsContainer.style.display = 'none';
+            }
+        }
+
+        // 添加滚动监听
+        let lastScrollTop = 0;
+        const header = document.querySelector('.fixed-header');
+        const scrollThreshold = 50;  // 滚动阈值
+
+        window.addEventListener('scroll', () => {
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const statsWrapper = document.querySelector('.stats-wrapper');
+            
+            // 向下滚动超过阈值时
+            if (scrollTop > lastScrollTop && scrollTop > scrollThreshold) {
+                header.classList.add('hidden');
+                // 显示统计栏
+                statsWrapper.classList.add('visible');
+            } 
+            // 向上滚动或回到顶部时
+            else if (scrollTop < lastScrollTop || scrollTop <= scrollThreshold) {
+                header.classList.remove('hidden');
+                // 隐藏统计栏
+                statsWrapper.classList.remove('visible');
+            }
+            
+            lastScrollTop = scrollTop;
+        }, { passive: true });
+
+        // 添加快速显示触发区
+        const triggerZone = document.createElement('div');
+        triggerZone.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 10px;
+            z-index: 1001;
+        `;
+        document.body.appendChild(triggerZone);
+
+        triggerZone.addEventListener('mouseenter', () => {
+            header.classList.remove('hidden');
+        });
+
+        // 修改登录验证相关代码
+        function checkLogin() {
+            const isLoggedIn = localStorage.getItem('isLoggedIn');
+            const loginExpiry = localStorage.getItem('loginExpiry');
+            const fromNavigation = sessionStorage.getItem('fromNavigation');
+            const directAccess = localStorage.getItem('directAccess');
+            
+            // 如果是直接访问标记，立即移除登录界面
+            if (directAccess === 'true') {
+                document.getElementById('loginOverlay').style.display = 'none';
+                localStorage.removeItem('directAccess');
+                return;
+            }
+            
+            // 如果是从导航按钮跳转来的，且登录状态有效，则不显示登录界面
+            if (fromNavigation === 'true' && isLoggedIn && loginExpiry && new Date().getTime() < parseInt(loginExpiry)) {
+                document.getElementById('loginOverlay').style.display = 'none';
+                sessionStorage.removeItem('fromNavigation');
+                return;
+            }
+            
+            // 其他情况显示登录界面
+            document.getElementById('loginOverlay').style.display = 'flex';
+            
+            // 如果登录已过期，清除登录状态
+            if (!isLoggedIn || !loginExpiry || new Date().getTime() >= parseInt(loginExpiry)) {
+                localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('loginExpiry');
+                document.getElementById('username').disabled = false;
+                document.getElementById('username').value = '';
+                document.getElementById('password').value = '';
+            }
+
+            // 如果有有效的登录状态，自动填充用户名和密码
+            if (isLoggedIn && loginExpiry && new Date().getTime() < parseInt(loginExpiry)) {
+                document.getElementById('username').value = 'admin';
+                document.getElementById('password').value = 'password123';
+                document.getElementById('username').disabled = true;
+                // 聚焦到密码输入框
+                setTimeout(() => {
+                    document.getElementById('password').focus();
+                    // 选中密码文本，方便用户直接输入新密码
+                    document.getElementById('password').select();
+                }, 100);
+            }
+        }
+
+        function handleLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const loginError = document.getElementById('loginError');
+
+            if (username === 'admin' && password === 'password123') {
+                // 设置登录状态，有效期一个月
+                const expiryDate = new Date();
+                expiryDate.setMonth(expiryDate.getMonth() + 1);
+                localStorage.setItem('isLoggedIn', 'true');
+                localStorage.setItem('loginExpiry', expiryDate.getTime().toString());
+                
+                // 隐藏登录界面
+                document.getElementById('loginOverlay').style.display = 'none';
+                loginError.classList.remove('show');
+                
+                // 清空密码输入框
+                document.getElementById('password').value = '';
+            } else {
+                loginError.classList.add('show');
+                // 添加抖动效果
+                const loginContainer = document.querySelector('.login-container');
+                loginContainer.style.animation = 'none';
+                setTimeout(() => {
+                    loginContainer.style.animation = 'shake 0.5s ease-in-out';
+                }, 10);
+            }
+        }
+
+        // 页面加载时检查登录状态
+        window.addEventListener('load', checkLogin);
+
+        // 添加回车键登录支持
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && document.getElementById('loginOverlay').style.display !== 'none') {
+                handleLogin();
+            }
+        });
+
+        // 在页面加载前就隐藏登录界面
+        document.addEventListener('DOMContentLoaded', function() {
+            const directAccess = localStorage.getItem('directAccess');
+            if (directAccess === 'true') {
+                document.getElementById('loginOverlay').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 

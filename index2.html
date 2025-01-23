@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>QR码标签打印系统</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'><path fill='%23e74c3c' d='M0 224h192V32H0v192zM64 96h64v64H64V96zm192-64v192h192V32H256zm128 128h-64V96h64v64zM0 480h192V288H0v192zm64-128h64v64H64v-64zm352-64h32v128h-96v-32h-32v96h-64V288h96v32h64v-32zm0 160h32v32h-32v-32zm-64 0h32v32h-32v-32z'/></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --background-color: #f8f9fa;
+            --text-color: #2c3e50;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: white;
+            box-shadow: var(--box-shadow);
+            border-radius: var(--border-radius);
+        }
+
+        h2 {
+            color: var(--primary-color);
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 2rem;
+            font-size: 2rem;
+            position: relative;
+        }
+
+        h2::after {
+            content: '';
+            display: block;
+            width: 50px;
+            height: 3px;
+            background: var(--secondary-color);
+            margin: 10px auto;
+        }
+
+        .top-controls {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .button {
+            padding: 0.8rem 1.5rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .button:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.3);
+        }
+
+        .button:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        .file-drop-zone {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 2px dashed var(--secondary-color);
+            border-radius: 4px;
+            padding: 2rem;
+            margin: 10px 0;
+            background-color: rgba(52, 152, 219, 0.05);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .file-drop-left {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+
+        .file-drop-zone input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .file-drop-zone.dragover {
+            background-color: rgba(52, 152, 219, 0.1);
+            border-color: var(--secondary-color);
+            transform: scale(1.02);
+        }
+
+        .file-drop-zone p {
+            margin: 0;
+            color: var(--text-color);
+            font-size: 1.1rem;
+        }
+
+        .file-drop-zone i {
+            font-size: 2rem;
+            color: var(--secondary-color);
+            margin-bottom: 1rem;
+        }
+
+        .label-container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .print-single {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .print-single:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .print-single.printed {
+            background-color: #2ecc71;
+        }
+
+        .print-single.printed:hover {
+            background-color: #27ae60;
+        }
+
+        .print-single i {
+            font-size: 14px;
+        }
+
+        .label {
+            width: 60mm;
+            height: 40mm;
+            position: relative;
+            border: 1px solid #ccc;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            background: white;
+        }
+
+        .label-content {
+            width: 100%;
+            position: relative;
+            height: 40mm;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2mm 0;
+            box-sizing: border-box;
+        }
+
+        .title {
+            position: absolute;
+            top: 2.5mm;
+            width: 100%;
+            text-align: center;
+            font-size: 8px;
+            font-weight: bold;
+        }
+
+        .qrcode-container {
+            width: 23mm;
+            height: 23mm;
+            margin: 4mm 0 2mm 0;
+            text-align: center;
+        }
+
+        .envio {
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 1mm;
+        }
+
+        .id {
+            width: 100%;
+            text-align: center;
+            font-size: 8px;
+            color: #666;
+            margin-bottom: 0.5mm;
+        }
+
+        .quantity {
+            position: absolute;
+            bottom: 2mm;
+            right: 5mm;
+            font-size: 8px;
+            color: #666;
+        }
+
+        .store-name {
+            position: absolute;
+            top: 2mm;
+            right: 5mm;
+            font-size: 8px;
+            color: #666;
+        }
+
+        .stats-container {
+            display: flex;
+            gap: 30px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stats-left {
+            display: flex;
+            gap: 30px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 0 15px;
+            border-right: 1px solid #eee;
+        }
+
+        .stat-item:last-child {
+            border-right: none;
+        }
+
+        .stat-label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            display: block;
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .stat-value.printed {
+            color: #2ecc71;
+        }
+
+        .stat-value.pending {
+            color: #e74c3c;
+        }
+
+        .print-all-button {
+            padding: 12px 24px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(231, 76, 60, 0.2);
+        }
+
+        .print-all-button:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 4px 8px rgba(231, 76, 60, 0.3);
+            background: #c0392b;
+        }
+
+        .print-all-button:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.3);
+        }
+
+        .print-all-button:active {
+            transform: scale(0.98);
+            box-shadow: 0 1px 2px rgba(231, 76, 60, 0.2);
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-2px); }
+            75% { transform: translateX(2px); }
+        }
+
+        .print-all-button i {
+            font-size: 16px;
+        }
+
+        .print-all-button:hover i {
+            animation: shake 0.3s ease-in-out infinite;
+        }
+
+        .nav-button {
+            padding: 12px 24px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        .nav-button:hover {
+            animation: none;
+            transform: translateY(-2px) scale(1.05);
+            background: #2980b9;
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+
+        .nav-button:active {
+            transform: scale(0.95);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+            }
+            50% {
+                transform: scale(1.05);
+                box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+            }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-2px) rotate(-1deg); }
+            20%, 40%, 60%, 80% { transform: translateX(2px) rotate(1deg); }
+        }
+
+        .nav-button i {
+            font-size: 16px;
+            animation: shake 3s infinite;
+        }
+
+        .beta-badge {
+            position: fixed;
+            top: 40px;
+            right: -60px;
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 5px 60px;
+            font-size: 12px;
+            font-weight: 600;
+            transform: rotate(45deg);
+            transform-origin: center;
+            box-shadow: 0 2px 10px rgba(231, 76, 60, 0.3);
+            z-index: 999;
+            animation: glow 2s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% {
+                box-shadow: 0 2px 10px rgba(231, 76, 60, 0.3);
+                transform: rotate(45deg) scale(1);
+            }
+            50% {
+                box-shadow: 0 5px 20px rgba(231, 76, 60, 0.5);
+                transform: rotate(45deg) scale(1.05);
+            }
+        }
+
+        /* 其他样式与条码标签相同，但调整了布局以适应QR码 */
+    </style>
+</head>
+<body>
+    <div class="beta-badge">Beta 0.0001</div>
+    <div class="container">
+        <div class="header-content">
+            <h2><i class="fas fa-qrcode"></i> QR码标签打印系统</h2>
+            <div class="top-controls">
+                <button class="button" onclick="handlePrint()">
+                    <i class="fas fa-print"></i> 打印全部
+                </button>
+                <button class="button" onclick="previewLabels()">
+                    <i class="fas fa-eye"></i> 预览标签
+                </button>
+            </div>
+            <div class="file-drop-zone" id="dropZone">
+                <div class="file-drop-left">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <input type="file" id="fileInput" accept=".txt,.zpl" />
+                    <p>将文件拖放到此处，或点击选择文件</p>
+                </div>
+                <button class="nav-button" onclick="navigateToIndex()">
+                    <i class="fas fa-barcode"></i> Barcode
+                </button>
+            </div>
+            <div class="stats-container" id="statsContainer" style="display: none;">
+                <div class="stats-left">
+                    <div class="stat-item">
+                        <span class="stat-label">标签总数</span>
+                        <span class="stat-value" id="totalLabels">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">已打印</span>
+                        <span class="stat-value printed" id="printedLabels">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">待打印</span>
+                        <span class="stat-value pending" id="pendingLabels">0</span>
+                    </div>
+                </div>
+                <button class="print-all-button" onclick="handlePrint()">
+                    <i class="fas fa-print"></i> 打印全部
+                </button>
+            </div>
+            <div id="labelPreview" class="label-preview"></div>
+        </div>
+    </div>
+
+    <script>
+        let zplContent = '';
+
+        // 添加文件拖放功能
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        // 阻止默认拖放行为
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // 添加视觉反馈
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('dragover');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('dragover');
+        }
+
+        // 处理文件拖放
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const file = dt.files[0];
+            
+            if (file && (file.name.endsWith('.txt') || file.name.endsWith('.zpl'))) {
+                handleFile(file);
+            } else {
+                alert('请选择.txt或.zpl文件');
+            }
+        }
+
+        // 处理文件选择
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        });
+
+        // 统一的文件处理函数
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                zplContent = e.target.result;
+                previewLabels();
+            };
+            reader.readAsText(file);
+        }
+
+        // 特殊字符映射表
+        const specialCharsMap = {
+            // ... 保持与之前相同的特殊字符映射 ...
+        };
+
+        function replaceSpecialChars(text) {
+            if (!text) return '';
+            let result = text;
+            for (let key in specialCharsMap) {
+                const regex = new RegExp(key, 'g');
+                result = result.replace(regex, specialCharsMap[key]);
+            }
+            return result;
+        }
+
+        // 解析ZPL文件中的QR码内容
+        function parseZPL(zpl) {
+            const labels = [];
+            const labelSegments = zpl.split('^XA').filter(segment => segment.trim());
+            
+            for(let segment of labelSegments) {
+                const label = {
+                    qrContent: '',
+                    envio: '',
+                    id: ''
+                };
+
+                // 提取QR码内容
+                let qrMatch = segment.match(/\^BQN,[^~]*?\^FDLA,([^\^]+)\^FS/);
+                if (!qrMatch) {
+                    qrMatch = segment.match(/\^BQ,[^~]*?\^FDLA,([^\^]+)\^FS/);
+                }
+                if(qrMatch) {
+                    label.qrContent = qrMatch[1].trim();
+                }
+
+                // 提取发货编号
+                const envioMatch = segment.match(/ENVIO\s+(\d+\/\d+)/);
+                if(envioMatch) {
+                    label.envio = envioMatch[1];
+                }
+
+                // 提取ID信息
+                const idMatch = segment.match(/XL070 - ID:\s*(\d+)/);
+                if(idMatch) {
+                    label.id = idMatch[1];
+                }
+
+                if(label.qrContent) {
+                    labels.push(label);
+                }
+            }
+            
+            return labels;
+        }
+
+        // 预览标签
+        function previewLabels() {
+            if(!zplContent) {
+                alert('请先选择ZPL文件');
+                return;
+            }
+
+            const labels = parseZPL(zplContent);
+            const previewDiv = document.getElementById('labelPreview');
+            previewDiv.innerHTML = '';
+
+            // 确保所有标签内容都被正确解析
+            labels.forEach((label, index) => {
+                if (!label.qrContent || !label.envio) {
+                    console.warn('标签内容不完整:', label);
+                    return;
+                }
+
+                const containerDiv = document.createElement('div');
+                containerDiv.className = 'label-container';
+
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'label';
+                
+                const labelContent = `
+                    <div class="label-content">
+                        <div class="title">ETIQUETA DE VOLUME</div>
+                        <div class="qrcode-container" id="qrcode_${index}"></div>
+                        <div class="envio">ENVIO ${label.envio}</div>
+                        <div class="id">XL070 - ID: ${label.id}</div>
+                    </div>
+                `;
+
+                labelDiv.innerHTML = labelContent;
+                containerDiv.appendChild(labelDiv);
+                
+                const printButton = document.createElement('button');
+                printButton.className = 'print-single';
+                printButton.innerHTML = `<i class="fas fa-print"></i> 打印`;
+                printButton.onclick = () => printSingleLabel(label);
+                containerDiv.appendChild(printButton);
+                
+                previewDiv.appendChild(containerDiv);
+                
+                // 使用QRious生成二维码
+                const qrContainer = document.getElementById(`qrcode_${index}`);
+                qrContainer.innerHTML = '';
+                const qr = new QRious({
+                    element: document.createElement('canvas'),
+                    value: label.qrContent,
+                    size: 300,
+                    level: 'H'
+                });
+                const img = new Image();
+                img.src = qr.toDataURL();
+                img.style.width = '23mm';
+                img.style.height = '23mm';
+                // 确保图片加载完成后再添加到容器
+                img.onload = () => {
+                    qrContainer.appendChild(img);
+                };
+            });
+            updateStats();
+        }
+
+        function printSingleLabel(label) {
+            const printButton = event.target;
+            const printWindow = window.open('', '_blank');
+            
+            const printContent = /* html */`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"><\/script>
+                    <style>
+                        @page {
+                            size: 60mm 40mm;
+                            margin: 0;
+                        }
+                        body {
+                            margin: 0;
+                            font-family: Arial, sans-serif;
+                        }
+                        .label {
+                            width: 60mm;
+                            height: 40mm;
+                            position: relative;
+                            page-break-after: always;
+                            box-sizing: border-box;
+                            background: white;
+                        }
+                        .label-content {
+                            width: 100%;
+                            position: relative;
+                            height: 40mm;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            padding: 2mm 0;
+                            box-sizing: border-box;
+                        }
+                        .title {
+                            position: absolute;
+                            top: 2.5mm;
+                            width: 100%;
+                            text-align: center;
+                            font-size: 8px;
+                            font-weight: bold;
+                        }
+                        .qrcode-container {
+                            width: 23mm;
+                            height: 23mm;
+                            margin: 4mm 0 2mm 0;
+                            text-align: center;
+                        }
+                        .envio {
+                            width: 100%;
+                            text-align: center;
+                            font-size: 12px;
+                            font-weight: bold;
+                            margin-bottom: 1mm;
+                        }
+                        .id {
+                            width: 100%;
+                            text-align: center;
+                            font-size: 8px;
+                            color: #666;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="label">
+                        <div class="label-content">
+                            <div class="title">ETIQUETA DE VOLUME</div>
+                            <div class="qrcode-container" id="print_qrcode"></div>
+                            <div class="envio">ENVIO ${label.envio}</div>
+                            <div class="id">XL070 - ID: ${label.id}</div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            
+            printWindow.onload = function() {
+                const qr = new QRious({
+                    element: document.createElement('canvas'),
+                    value: label.qrContent,
+                    size: 300,
+                    level: 'H'
+                });
+                const img = new Image();
+                img.src = qr.toDataURL();
+                img.style.width = '23mm';
+                img.style.height = '23mm';
+                printWindow.document.getElementById('print_qrcode').appendChild(img);
+                
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                    printButton.classList.add('printed');
+                    printButton.innerHTML = '<i class="fas fa-check"></i> 已打印';
+                    updateStats();
+                }, 500);
+            };
+            
+            printWindow.document.close();
+        }
+
+        function handlePrint() {
+            if(!zplContent) {
+                alert('请先选择ZPL文件');
+                return;
+            }
+
+            const labels = parseZPL(zplContent);
+            const printWindow = window.open('', '_blank');
+            
+            const printContent = /* html */`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"><\/script>
+                    <style>
+                        @page {
+                            size: 60mm 40mm;
+                            margin: 0;
+                        }
+                        body {
+                            margin: 0;
+                            font-family: Arial, sans-serif;
+                        }
+                        .label {
+                            width: 60mm;
+                            height: 40mm;
+                            position: relative;
+                            page-break-after: always;
+                            box-sizing: border-box;
+                            background: white;
+                        }
+                        .label-content {
+                            width: 100%;
+                            position: relative;
+                            height: 40mm;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            padding: 2mm 0;
+                            box-sizing: border-box;
+                        }
+                        .title {
+                            position: absolute;
+                            top: 2.5mm;
+                            width: 100%;
+                            text-align: center;
+                            font-size: 8px;
+                            font-weight: bold;
+                        }
+                        .qrcode-container {
+                            width: 23mm;
+                            height: 23mm;
+                            margin: 4mm 0 2mm 0;
+                            text-align: center;
+                        }
+                        .envio {
+                            width: 100%;
+                            text-align: center;
+                            font-size: 12px;
+                            font-weight: bold;
+                            margin-bottom: 1mm;
+                        }
+                        .id {
+                            width: 100%;
+                            text-align: center;
+                            font-size: 8px;
+                            color: #666;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${labels.map((label, index) => `
+                        <div class="label">
+                            <div class="label-content">
+                                <div class="title">ETIQUETA DE VOLUME</div>
+                                <div class="qrcode-container" id="print_qrcode_${index}"></div>
+                                <div class="envio">ENVIO ${label.envio}</div>
+                                <div class="id">XL070 - ID: ${label.id}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            
+            printWindow.onload = function() {
+                labels.forEach((label, index) => {
+                    const qr = new QRious({
+                        element: document.createElement('canvas'),
+                        value: label.qrContent,
+                        size: 300,
+                        level: 'H'
+                    });
+                    const img = new Image();
+                    img.src = qr.toDataURL();
+                    img.style.width = '23mm';
+                    img.style.height = '23mm';
+                    printWindow.document.getElementById(`print_qrcode_${index}`).appendChild(img);
+                });
+                
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                }, 500);
+            };
+            
+            printWindow.document.close();
+        }
+
+        // 添加统计信息更新函数
+        function updateStats() {
+            const labels = parseZPL(zplContent);
+            const statsContainer = document.getElementById('statsContainer');
+            
+            if (labels.length > 0) {
+                const totalLabels = labels.length;  // 总标签数
+                const printedLabels = document.querySelectorAll('.print-single.printed').length;
+                const pendingLabels = totalLabels - printedLabels;
+
+                document.getElementById('totalLabels').textContent = totalLabels;
+                document.getElementById('printedLabels').textContent = printedLabels;
+                document.getElementById('pendingLabels').textContent = pendingLabels;
+                
+                statsContainer.style.display = 'flex';
+            } else {
+                statsContainer.style.display = 'none';
+            }
+        }
+
+        function navigateToIndex() {
+            // 检查登录状态
+            const isLoggedIn = localStorage.getItem('isLoggedIn');
+            const loginExpiry = localStorage.getItem('loginExpiry');
+            
+            // 如果登录状态有效，设置一个特殊的标记
+            if (isLoggedIn && loginExpiry && new Date().getTime() < parseInt(loginExpiry)) {
+                localStorage.setItem('directAccess', 'true');
+            }
+            sessionStorage.setItem('fromNavigation', 'true');
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html> 
