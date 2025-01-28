@@ -487,58 +487,31 @@
             try {
                 const source = record.source || 'index';
                 
-                // 创建一个Promise来处理iframe加载
-                const loadIframe = () => {
-                    return new Promise((resolve, reject) => {
-                        const iframe = document.createElement('iframe');
-                        iframe.style.display = 'none';
-                        iframe.style.width = '100%';
-                        iframe.style.height = '100%';
-                        
-                        // 等待iframe完全加载
-                        iframe.onload = async () => {
-                            try {
-                                // 等待一段时间确保页面完全初始化
-                                await new Promise(resolve => setTimeout(resolve, 2000));
-                                
-                                // 检查iframe内容是否正确加载
-                                if (!iframe.contentWindow || !iframe.contentWindow.document) {
-                                    reject(new Error('iframe内容未正确加载'));
-                                    return;
-                                }
-                                
-                                // 等待Firebase初始化完成
-                                let attempts = 0;
-                                const maxAttempts = 10;
-                                
-                                while (attempts < maxAttempts) {
-                                    if (iframe.contentWindow.printSingleLabel) {
-                                        resolve(iframe);
-                                        return;
-                                    }
-                                    await new Promise(resolve => setTimeout(resolve, 500));
-                                    attempts++;
-                                }
-                                
-                                reject(new Error('打印函数加载超时'));
-                            } catch (err) {
-                                reject(err);
-                            }
-                        };
-                        
-                        iframe.onerror = () => reject(new Error('iframe加载失败'));
-                        
-                        document.body.appendChild(iframe);
-                        iframe.src = `${source}.html`;
-                    });
-                };
+                // 创建一个新窗口而不是iframe
+                const printWindow = window.open(`${source}.html`, 'printWindow', 
+                    'width=800,height=600,menubar=no,toolbar=no,location=no,status=no');
+                
+                if (!printWindow) {
+                    throw new Error('请允许弹出窗口以继续打印');
+                }
 
-                // 等待iframe加载完成
-                const iframe = await loadIframe();
+                // 等待新窗口加载完成
+                await new Promise((resolve, reject) => {
+                    printWindow.onload = resolve;
+                    printWindow.onerror = reject;
+                    
+                    // 设置超时
+                    setTimeout(() => {
+                        reject(new Error('加载超时'));
+                    }, 10000);
+                });
 
                 try {
+                    // 确保窗口内容已加载
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
                     // 获取打印函数
-                    const printFunction = iframe.contentWindow.printSingleLabel;
+                    const printFunction = printWindow.printSingleLabel;
                     if (!printFunction) {
                         throw new Error('未找到打印函数');
                     }
@@ -557,20 +530,16 @@
                     };
 
                     // 调用打印函数
-                    await printFunction.call(iframe.contentWindow, printData);
+                    await printFunction.call(printWindow, printData);
                     
-                    // 打印完成后延迟移除iframe
+                    // 打印完成后延迟关闭窗口
                     setTimeout(() => {
-                        if (iframe && iframe.parentNode) {
-                            iframe.parentNode.removeChild(iframe);
-                        }
+                        printWindow.close();
                     }, 2000);
 
                 } catch (err) {
                     console.error('打印过程出错:', err);
-                    if (iframe && iframe.parentNode) {
-                        iframe.parentNode.removeChild(iframe);
-                    }
+                    printWindow.close();
                     throw err;
                 }
 
@@ -578,7 +547,13 @@
                 console.error('打印失败:', err);
                 const currentLang = getCurrentLanguage();
                 const trans = translations[currentLang];
-                alert(trans.printError + ': ' + err.message);
+                
+                // 如果是弹窗被阻止的错误，显示特殊提示
+                if (err.message.includes('弹出窗口')) {
+                    alert(trans.printError + ': ' + trans.allowPopup);
+                } else {
+                    alert(trans.printError + ': ' + err.message);
+                }
             }
         }
 
@@ -648,7 +623,8 @@
                 'reprintButton': '重新打印',
                 'printError': '打印失败',
                 'deleteError': '删除记录失败',
-                'printFunctionNotFound': '未找到打印函数'
+                'printFunctionNotFound': '未找到打印函数',
+                'allowPopup': '请允许弹出窗口以继续打印。请检查浏览器设置，允许本站点的弹出窗口。'
             },
             'pt': {
                 'pageTitle': 'Histórico de Impressão',
@@ -665,7 +641,8 @@
                 'reprintButton': 'Reimprimir',
                 'printError': 'Falha na impressão',
                 'deleteError': 'Falha ao excluir registros',
-                'printFunctionNotFound': 'Função de impressão não encontrada'
+                'printFunctionNotFound': 'Função de impressão não encontrada',
+                'allowPopup': 'Por favor, permita pop-ups para continuar a impressão. Verifique as configurações do navegador.'
             }
         };
 
