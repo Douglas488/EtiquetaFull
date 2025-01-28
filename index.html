@@ -8,6 +8,10 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     <style>
         :root {
             --primary-color: #2c3e50;
@@ -362,18 +366,21 @@
         /* 分离统计栏的样式 */
         .stats-wrapper {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 999;
+            top: calc(50% + 100px);  /* 默认位置 */
+            left: 340px;             /* 默认位置 */
+            width: 200px;
+            z-index: 998;
             background: white;
-            transform: translateY(-100%);
-            transition: transform 0.3s ease;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            cursor: move;  /* 添加移动光标 */
+            user-select: none;  /* 防止文本被选中 */
         }
 
-        .stats-wrapper.visible {
-            transform: translateY(0);
-            box-shadow: var(--box-shadow);
+        /* 添加拖动时的样式 */
+        .stats-wrapper.dragging {
+            opacity: 0.8;
+            box-shadow: 0 0 20px rgba(52, 152, 219, 0.5);
         }
 
         .fixed-header.hidden {
@@ -386,7 +393,7 @@
         }
 
         .main-content {
-            margin-top: 320px;  /* 增加顶部边距以适应统计栏的高度 */
+            margin-top: 420px;   /* 从220px增加到420px，为固定header和其他元素留出更多空间 */
         }
 
         .nav-button {
@@ -609,6 +616,73 @@
             opacity: 1;
             transform: translateY(0);
         }
+
+        .sort-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 15px;  /* 增加与文件选择框的间距 */
+            margin-bottom: 15px;  /* 增加与下方内容的间距 */
+        }
+        
+        .sort-select {
+            padding: 0.8rem 1.2rem;
+            border: 2px solid var(--secondary-color);
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 200px;
+        }
+        
+        .sort-select:hover {
+            border-color: #2980b9;
+            transform: translateY(-2px);
+        }
+        
+        .sort-select:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
+        }
+
+        .stats-container {
+            display: flex;
+            flex-direction: column;  /* 改为竖向排列 */
+            gap: 10px;
+            padding: 1rem;
+            background: rgba(52, 152, 219, 0.05);
+            border-radius: var(--border-radius);
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;  /* 标签和数值左右排列 */
+            align-items: center;
+            padding: 0.8rem 1rem;
+            background: white;
+            border-radius: var(--border-radius);
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-item:hover {
+            transform: translateX(5px);  /* 改为横向移动效果 */
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--text-color);
+            margin-bottom: 0;  /* 移除底部边距 */
+        }
+
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
     </style>
 </head>
 <body>
@@ -627,15 +701,21 @@
             <h2><i class="fas fa-tags"></i> ZPL标签打印系统</h2>
             <div class="top-controls">
                 <div class="beta-badge">Beta 0.0001</div>
+                <input type="text" id="storeNameInput" class="store-input" placeholder="输入店名" onchange="updateStoreNames()">
                 <button class="button" onclick="handlePrint()">
                     <i class="fas fa-print"></i> 直接打印
                 </button>
                 <button class="button" onclick="previewLabels()">
                     <i class="fas fa-eye"></i> 预览标签
                 </button>
-                <input type="text" id="storeNameInput" class="store-input" placeholder="输入店名" onchange="updateStoreNames()">
+                <button class="button" onclick="window.location.href='index3.html'">
+                    <i class="fas fa-history"></i> 打印历史
+                </button>
                 <button class="export-button" onclick="exportToExcel()">
                     <i class="fas fa-file-excel"></i> 导出Excel出库单
+                </button>
+                <button class="button" onclick="handleLogout()">
+                    <i class="fas fa-sign-out-alt"></i> 退出登录
                 </button>
             </div>
             <div class="file-drop-zone" id="dropZone">
@@ -648,38 +728,46 @@
                     <i class="fas fa-qrcode"></i> QRcode
                 </button>
             </div>
+            <div class="sort-controls">
+                <select id="sortSelect" class="sort-select" onchange="handleSort()">
+                    <option value="quantity">按数量排序</option>
+                    <option value="sku">按SKU排序</option>
+                </select>
+            </div>
         </div>
     </div>
-    <div class="stats-wrapper">
-        <div class="header-content">
-            <div class="stats-container" id="statsContainer" style="display: none;">
-                <div class="stat-item">
-                    <span class="stat-label">SKU总数</span>
-                    <span class="stat-value" id="totalSKUs">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">标签总数</span>
-                    <span class="stat-value" id="totalLabels">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">已打印</span>
-                    <span class="stat-value printed" id="printedLabels">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">待打印</span>
-                    <span class="stat-value pending" id="pendingLabels">0</span>
-                </div>
+    <div class="stats-wrapper" id="statsWrapper">
+        <div class="stats-container" id="statsContainer" style="display: none;">
+            <div class="stat-item">
+                <span class="stat-label">SKU总数</span>
+                <span class="stat-value" id="totalSKUs">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">标签总数</span>
+                <span class="stat-value" id="totalLabels">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">已打印</span>
+                <span class="stat-value printed" id="printedLabels">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">待打印</span>
+                <span class="stat-value pending" id="pendingLabels">0</span>
             </div>
         </div>
     </div>
     <div class="main-content">
         <div class="container">
-            <div id="labelPreview" class="label-preview"></div>
+            <div id="labelPreview" class="label-preview">
+            </div>
         </div>
     </div>
 
     <script>
         let zplContent = '';
+        let auth;
+        let db;
+        let storage;
 
         // 特殊字符映射表
         const specialCharsMap = {
@@ -837,16 +925,32 @@
             return labels;
         }
 
-        function previewLabels() {
-            if(!zplContent) {
-                alert('请先选择ZPL文件');
-                return;
-            }
-
+        function handleSort() {
+            if(!zplContent) return;
+            
+            const sortType = document.getElementById('sortSelect').value;
             const labels = parseZPL(zplContent);
+            
+            // 根据选择的排序方式进行排序
+            if(sortType === 'sku') {
+                labels.sort((a, b) => {
+                    if (a.sku < b.sku) return -1;
+                    if (a.sku > b.sku) return 1;
+                    return 0;
+                });
+            } else if(sortType === 'quantity') {
+                labels.sort((a, b) => {
+                    const quantityA = a.quantity || 1;
+                    const quantityB = b.quantity || 1;
+                    return quantityB - quantityA; // 数量从大到小排序
+                });
+            }
+            
+            // 重新渲染标签
             const previewDiv = document.getElementById('labelPreview');
             previewDiv.innerHTML = '';
-
+            
+            // 添加标签预览
             labels.forEach(label => {
                 const containerDiv = document.createElement('div');
                 containerDiv.className = 'label-container';
@@ -870,9 +974,10 @@
                 labelDiv.innerHTML = labelContent;
                 containerDiv.appendChild(labelDiv);
                 
-                // 修改打印按钮文字
+                // 添加打印按钮
                 const printButton = document.createElement('button');
                 printButton.className = 'print-single';
+                printButton.setAttribute('data-sku', label.sku);
                 printButton.innerHTML = `<i class="fas fa-print"></i> 打印 ${label.quantity || 1} 个标签`;
                 printButton.onclick = () => printSingleLabel(label, document.getElementById('storeNameInput')?.value || '');
                 containerDiv.appendChild(printButton);
@@ -887,7 +992,19 @@
                     margin: 0
                 });
             });
+            
+            // 更新统计信息
             updateStats();
+        }
+
+        function previewLabels() {
+            if(!zplContent) {
+                alert('请先选择ZPL文件');
+                return;
+            }
+
+            // 触发排序处理
+            handleSort();
         }
 
         function handlePrint() {
@@ -898,6 +1015,9 @@
 
             const labels = parseZPL(zplContent);
             const printWindow = window.open('', '_blank');
+            
+            // 获取当前店名
+            const storeName = document.getElementById('storeNameInput')?.value || '';
             
             const printContent = `
                 <!DOCTYPE html>
@@ -990,7 +1110,7 @@
                                     <div class="product-name">${label.productName}</div>
                                     <div class="sku">SKU: ${label.sku}</div>
                                     <div class="quantity">QT: ${label.quantity || 1}</div>
-                                    <div class="store-name">${document.getElementById('storeNameInput')?.value || ''}</div>
+                                    <div class="store-name">${storeName}</div>
                                 </div>
                             </div>
                         `).join('')
@@ -1028,135 +1148,190 @@
             printWindow.document.close();
         }
 
-        function printSingleLabel(label, storeName = '') {
-            const printButton = event.target;
-            const printWindow = window.open('', '_blank');
-            
-            const printContent = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"><\/script>
-                    <style>
-                        @page {
-                            size: 60mm 40mm;
-                            margin: 0;
-                        }
-                        body {
-                            margin: 0;
-                            font-family: Arial, sans-serif;
-                        }
-                        .label {
-                            width: 60mm;
-                            height: 40mm;
-                            position: relative;
-                            page-break-after: always;
-                            box-sizing: border-box;
-                            display: flex;
-                            flex-direction: column;
-                            justify-content: center;
-                            align-items: center;
-                        }
-                        .label-content {
-                            width: 100%;
-                            position: relative;
-                            height: 30mm;
-                            margin-top: 5mm;
-                        }
-                        .barcode-container {
-                            position: absolute;
-                            top: 0mm;
-                            left: 10mm;
-                            width: 30mm;
-                            height: 12mm;
-                            text-align: center;
-                        }
-                        .text-code {
-                            position: absolute;
-                            top: 14mm;
-                            width: 100%;
-                            text-align: center;
-                            font-size: 12px;
-                        }
-                        .product-name {
-                            position: absolute;
-                            top: 18mm;
-                            left: 5mm;
-                            width: 50mm;
-                            font-size: 10px;
-                            line-height: 1.2;
-                            text-align: left;
-                        }
-                        .sku {
-                            position: absolute;
-                            top: 26mm;
-                            left: 5mm;
-                            font-size: 10px;
-                        }
-                        .quantity {
-                            position: absolute;
-                            bottom: 2mm;
-                            right: 5mm;
-                            font-size: 8px;
-                            color: #666;
-                        }
-                        .store-name {
-                            position: absolute;
-                            top: -4mm;
-                            right: 5mm;
-                            font-size: 8px;
-                            color: #666;
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${new Array(label.quantity || 1).fill(0).map((_, i) => `
-                        <div class="label">
-                            <div class="label-content">
-                                <div class="barcode-container">
-                                    <svg id="barcode_${label.barcode}_${i}"></svg>
-                                </div>
-                                <div class="text-code">${label.barcode}</div>
-                                <div class="product-name">${label.productName}</div>
-                                <div class="sku">SKU: ${label.sku}</div>
-                                <div class="quantity">QT: ${label.quantity || 1}</div>
-                                <div class="store-name">${storeName}</div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </body>
-                </html>
-            `;
-            
-            printWindow.document.write(printContent);
-            
-            printWindow.onload = function() {
-                new Array(label.quantity || 1).fill(0).forEach((_, i) => {
-                    JsBarcode(
-                        printWindow.document.querySelector(`#barcode_${label.barcode}_${i}`),
-                        label.barcode,
-                        {
-                            format: "code128",
-                            width: 1.2,
-                            height: 40,
-                            displayValue: false,
-                            margin: 0
-                        }
-                    );
-                });
+        function printSingleLabel(data) {
+            try {
+                const printButton = data.event?.target || event?.target;
+                if (!printButton) {
+                    throw new Error('无法获取打印按钮');
+                }
+
+                const printWindow = window.open('', '_blank');
                 
-                setTimeout(() => {
-                    printWindow.print();
-                    printWindow.close();
-                    // 修改打印完成后的按钮文字
-                    printButton.classList.add('printed');
-                    printButton.innerHTML = `<i class="fas fa-check"></i> 已打印 ${label.quantity || 1} 个标签`;
-                    updateStats();
-                }, 500);
-            };
-            
-            printWindow.document.close();
+                // 获取当前店名
+                const storeName = document.getElementById('storeNameInput')?.value || '';
+                
+                const printContent = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"><\/script>
+                        <style>
+                            @page {
+                                size: 60mm 40mm;
+                                margin: 0;
+                            }
+                            body {
+                                margin: 0;
+                                font-family: Arial, sans-serif;
+                            }
+                            .label {
+                                width: 60mm;
+                                height: 40mm;
+                                position: relative;
+                                page-break-after: always;
+                                box-sizing: border-box;
+                                display: flex;
+                                flex-direction: column;
+                                justify-content: center;
+                                align-items: center;
+                            }
+                            .label-content {
+                                width: 100%;
+                                position: relative;
+                                height: 30mm;
+                                margin-top: 5mm;
+                            }
+                            .barcode-container {
+                                position: absolute;
+                                top: 0mm;
+                                left: 10mm;
+                                width: 30mm;
+                                height: 12mm;
+                                text-align: center;
+                            }
+                            .text-code {
+                                position: absolute;
+                                top: 14mm;
+                                width: 100%;
+                                text-align: center;
+                                font-size: 12px;
+                            }
+                            .product-name {
+                                position: absolute;
+                                top: 18mm;
+                                left: 5mm;
+                                width: 50mm;
+                                font-size: 10px;
+                                line-height: 1.2;
+                                text-align: left;
+                            }
+                            .sku {
+                                position: absolute;
+                                top: 26mm;
+                                left: 5mm;
+                                font-size: 10px;
+                            }
+                            .quantity {
+                                position: absolute;
+                                bottom: 2mm;
+                                right: 5mm;
+                                font-size: 8px;
+                                color: #666;
+                            }
+                            .store-name {
+                                position: absolute;
+                                top: -4mm;
+                                right: 5mm;
+                                font-size: 8px;
+                                color: #666;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        ${new Array(data.quantity || 1).fill(0).map((_, i) => `
+                            <div class="label">
+                                <div class="label-content">
+                                    <div class="barcode-container">
+                                        <svg id="barcode_${data.barcode}_${i}"></svg>
+                                    </div>
+                                    <div class="text-code">${data.barcode}</div>
+                                    <div class="product-name">${data.productName}</div>
+                                    <div class="sku">SKU: ${data.sku}</div>
+                                    <div class="quantity">QT: ${data.quantity || 1}</div>
+                                    <div class="store-name">${storeName}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </body>
+                    </html>
+                `;
+                
+                printWindow.document.write(printContent);
+                
+                printWindow.onload = async function() {
+                    new Array(data.quantity || 1).fill(0).forEach((_, i) => {
+                        JsBarcode(
+                            printWindow.document.querySelector(`#barcode_${data.barcode}_${i}`),
+                            data.barcode,
+                            {
+                                format: "code128",
+                                width: 1.2,
+                                height: 40,
+                                displayValue: false,
+                                margin: 0
+                            }
+                        );
+                    });
+                    
+                    setTimeout(async () => {
+                        try {
+                            printWindow.print();
+                            printWindow.close();
+                            
+                            // 只有在不是从历史记录重新打印时才保存记录
+                            if (!data.fromHistory) {
+                                // 获取店名和日期
+                                const storeName = document.getElementById('storeNameInput')?.value.trim() || '';
+                                const now = new Date();
+                                const date = now.getDate().toString().padStart(2, '0');
+                                const month = (now.getMonth() + 1).toString().padStart(2, '0');
+                                
+                                // 构建记录名称
+                                const recordName = storeName ? 
+                                    `${storeName}${date}${month}` : 
+                                    `${date}${month}`;
+
+                                // 保存打印记录到 Firebase
+                                const uid = localStorage.getItem('uid');
+                                const username = localStorage.getItem('username');
+                                
+                                if (!uid || !username) {
+                                    throw new Error('用户未登录');
+                                }
+
+                                await db.collection('printRecords').add({
+                                    userId: uid,          
+                                    username: username,   
+                                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                                    sku: data.sku,      
+                                    barcode: data.barcode,
+                                    quantity: data.quantity || 1,
+                                    productName: data.productName,
+                                    storeName: storeName, 
+                                    recordName: recordName,
+                                    source: 'index'  // 添加来源标记
+                                }).then(docRef => {
+                                    console.log('文档写入成功，ID:', docRef.id);
+                                });
+                            }
+                            
+                            // 更新打印按钮状态
+                            printButton.classList.add('printed');
+                            printButton.innerHTML = `<i class="fas fa-check"></i> 已打印 ${data.quantity || 1} 个标签`;
+                            
+                        } catch (err) {
+                            console.error('保存打印记录失败:', err);
+                            alert('保存打印记录失败: ' + err.message);
+                        }
+                    }, 500);
+                };
+                
+                printWindow.document.close();
+            } catch (err) {
+                console.error('打印失败:', err);
+                alert(`打印失败: ${err.message}`);
+            }
         }
 
         function updateStoreNames() {
@@ -1167,67 +1342,56 @@
         }
 
         function exportToExcel() {
-            if(!zplContent) {
+            if (!zplContent) {
                 alert('请先选择ZPL文件');
                 return;
             }
 
-            const labels = parseZPL(zplContent);
-            
-            // 准备Excel数据
-            const excelData = [
-                ['SKU*', '数量*\n(限制 1-999999)'],
-                ...labels.map(label => {
-                    const quantity = label.quantity || 1;
-                    if (quantity < 1 || quantity > 999999) {
-                        alert(`SKU: ${label.sku} 的数量 ${quantity} 超出范围(1-999999)`);
-                        return null;
-                    }
-                    return [
-                        label.sku,
-                        quantity
-                    ]
-                }).filter(row => row !== null)
-            ];
+            try {
+                // 从ZPL内容中提取SKU和数量信息
+                const labels = parseZPL(zplContent);
+                
+                // 统计每个SKU的数量
+                const skuMap = new Map();
+                labels.forEach(label => {
+                    const sku = label.sku;
+                    const quantity = parseInt(label.quantity) || 1;
+                    skuMap.set(sku, (skuMap.get(sku) || 0) + quantity);
+                });
 
-            // 创建工作簿
-            const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.aoa_to_sheet(excelData);
+                // 创建工作表数据
+                const wsData = [
+                    ['SKU*', '数量*\n(限制 1-999999)']  // 表头
+                ];
 
-            // 设置列宽和行高
-            const colWidths = [
-                { wch: 15 },
-                { wch: 25 }
-            ];
-            ws['!rows'] = [{ hpt: 30 }];
-            ws['!cols'] = colWidths;
+                // 添加数据行
+                skuMap.forEach((quantity, sku) => {
+                    wsData.push([sku, quantity]);
+                });
 
-            if(ws['B1']) {
-                ws['B1'].s = {
-                    alignment: {
-                        wrapText: true,
-                        vertical: 'center'
-                    }
-                };
+                // 创建工作表
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+                // 创建工作簿
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "出库单");
+
+                // 修改文件命名逻辑
+                const now = new Date();
+                const date = now.getDate().toString().padStart(2, '0');
+                const month = (now.getMonth() + 1).toString().padStart(2, '0');
+                const storeName = document.getElementById('storeNameInput').value.trim();
+                
+                // 根据是否有店名构建文件名
+                const fileName = storeName ? 
+                    `${date}${month}.${storeName}.xlsx` : 
+                    `${date}${month}.xlsx`;
+
+                XLSX.writeFile(wb, fileName);
+            } catch (err) {
+                console.error('导出Excel失败:', err);
+                alert('导出Excel失败: ' + err.message);
             }
-
-            XLSX.utils.book_append_sheet(wb, ws, "SKU数量");
-
-            // 获取店名和当前日期
-            const storeName = document.getElementById('storeNameInput').value.trim();
-            const now = new Date();
-            const date = now.getDate().toString().padStart(2, '0');
-            const month = (now.getMonth() + 1).toString().padStart(2, '0');
-            
-            // 构建文件名
-            let fileName;
-            if (storeName) {
-                fileName = `${storeName}${date}${month}.xlsx`;
-            } else {
-                fileName = `SKU数量统计_${date}${month}.xlsx`;
-            }
-
-            XLSX.writeFile(wb, fileName);
         }
 
         // 添加拖放功能
@@ -1270,32 +1434,96 @@
         // 处理文件拖放
         dropZone.addEventListener('drop', handleDrop, false);
 
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const file = dt.files[0];
-            
-            if (file && (file.name.endsWith('.txt') || file.name.endsWith('.zpl'))) {
+        async function handleFile(file) {
+            try {
+                if (!file || !(file instanceof Blob)) {
+                    throw new Error('无效的文件');
+                }
+
+                if (!(file.name.endsWith('.txt') || file.name.endsWith('.zpl'))) {
+                    throw new Error('请选择.txt或.zpl文件');
+                }
+
                 const reader = new FileReader();
-                reader.onload = function(e) {
+                
+                reader.onload = async function(e) {
                     zplContent = e.target.result;
+                    
+                    // 设置默认排序方式为数量排序
+                    document.getElementById('sortSelect').value = 'quantity';
+                    
+                    // 先预览标签
                     previewLabels();
+                    
+                    // 然后保存文件
+                    try {
+                        const uid = localStorage.getItem('uid');
+                        if (!uid) throw new Error('用户未登录');
+                        
+                        const storeName = document.getElementById('storeNameInput').value.trim();
+                        const now = new Date();
+                        const date = now.getDate().toString().padStart(2, '0');
+                        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+                        
+                        const fileName = storeName ? `${storeName}${date}${month}.zpl` : file.name;
+                        
+                        // 创建文件引用
+                        const fileRef = storage.ref(`zpl_files/${uid}/${fileName}`);
+                        
+                        // 上传文件
+                        await fileRef.putString(zplContent);
+                        console.log('文件已保存到 Storage');
+                        
+                        // 获取下载链接
+                        const downloadURL = await fileRef.getDownloadURL();
+                        
+                        // 保存文件记录到 Firestore
+                        await db.collection('zpl_files').add({
+                            userId: uid,
+                            fileName: fileName,
+                            originalName: file.name,
+                            storeName: storeName || null,
+                            uploadTime: firebase.firestore.FieldValue.serverTimestamp(),
+                            downloadURL: downloadURL
+                        });
+                        
+                    } catch (err) {
+                        console.error('保存文件失败:', err);
+                    }
                 };
+
+                reader.onerror = function() {
+                    throw new Error('读取文件失败');
+                };
+                
                 reader.readAsText(file);
-            } else {
-                alert('请选择.txt或.zpl文件');
+            } catch (err) {
+                console.error('处理文件失败:', err);
+                alert('处理文件失败: ' + err.message);
             }
         }
 
-        // 修改原有的文件输入处理
+        // 修改拖放处理函数
+        function handleDrop(e) {
+            e.preventDefault();
+            const dt = e.dataTransfer;
+            const files = dt.files;
+
+            if (files.length > 0) {
+                const file = files[0];
+                if (file && (file.name.endsWith('.txt') || file.name.endsWith('.zpl'))) {
+                    handleFile(file);
+                } else {
+                    alert('请选择.txt或.zpl文件');
+                }
+            }
+        }
+
+        // 修改文件输入处理函数
         fileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    zplContent = e.target.result;
-                    previewLabels();
-                };
-                reader.readAsText(file);
+                handleFile(file);
             }
         });
 
@@ -1368,99 +1596,225 @@
             header.classList.remove('hidden');
         });
 
-        // 修改登录验证相关代码
-        function checkLogin() {
-            const isLoggedIn = localStorage.getItem('isLoggedIn');
-            const loginExpiry = localStorage.getItem('loginExpiry');
-            const fromNavigation = sessionStorage.getItem('fromNavigation');
-            const directAccess = localStorage.getItem('directAccess');
-            
-            // 如果是直接访问标记，立即移除登录界面
-            if (directAccess === 'true') {
-                document.getElementById('loginOverlay').style.display = 'none';
-                localStorage.removeItem('directAccess');
-                return;
-            }
-            
-            // 如果是从导航按钮跳转来的，且登录状态有效，则不显示登录界面
-            if (fromNavigation === 'true' && isLoggedIn && loginExpiry && new Date().getTime() < parseInt(loginExpiry)) {
-                document.getElementById('loginOverlay').style.display = 'none';
-                sessionStorage.removeItem('fromNavigation');
-                return;
-            }
-            
-            // 其他情况显示登录界面
-            document.getElementById('loginOverlay').style.display = 'flex';
-            
-            // 如果登录已过期，清除登录状态
-            if (!isLoggedIn || !loginExpiry || new Date().getTime() >= parseInt(loginExpiry)) {
-                localStorage.removeItem('isLoggedIn');
-                localStorage.removeItem('loginExpiry');
-                document.getElementById('username').disabled = false;
-                document.getElementById('username').value = '';
-                document.getElementById('password').value = '';
-            }
+        // 确保在使用AWS服务之前进行配置
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                // 等待确保 SDK 已完全加载
+                await new Promise(resolve => setTimeout(resolve, 1000));
 
-            // 如果有有效的登录状态，自动填充用户名和密码
-            if (isLoggedIn && loginExpiry && new Date().getTime() < parseInt(loginExpiry)) {
-                document.getElementById('username').value = 'admin';
-                document.getElementById('password').value = 'password123';
-                document.getElementById('username').disabled = true;
-                // 聚焦到密码输入框
-                setTimeout(() => {
-                    document.getElementById('password').focus();
-                    // 选中密码文本，方便用户直接输入新密码
-                    document.getElementById('password').select();
-                }, 100);
+                const firebaseConfig = {
+                    apiKey: "AIzaSyDSgBsYlzT471RdyvuIEINFo4ZslnXqfgA",
+                    authDomain: "zpl-print-system.firebaseapp.com",
+                    projectId: "zpl-print-system",
+                    storageBucket: "zpl-print-system.firebasestorage.app",
+                    messagingSenderId: "795878947199",
+                    appId: "1:795878947199:web:8933213433cb2d2f3f824a",
+                    measurementId: "G-EQ7FT85SXW"
+                };
+
+                // 初始化 Firebase
+                firebase.initializeApp(firebaseConfig);
+
+                // 获取 Auth 和 Firestore 实例并赋值给全局变量
+                auth = firebase.auth();
+                db = firebase.firestore();
+
+                // 初始化 Storage
+                storage = firebase.storage();
+
+                console.log('Firebase服务初始化成功');
+                
+                // 初始化成功后检查登录状态
+                checkLogin();
+
+                // 修改 auth.onAuthStateChanged 函数
+                auth.onAuthStateChanged(async (user) => {
+                    if (user) {
+                        document.getElementById('loginOverlay').style.display = 'none';
+                    } else {
+                        document.getElementById('loginOverlay').style.display = 'flex';
+                    }
+                });
+            } catch (err) {
+                console.error('Firebase服务初始化失败:', err);
+                document.getElementById('loginError').textContent = '系统初始化失败: ' + err.message;
+                document.getElementById('loginError').classList.add('show');
+            }
+        });
+
+        // 修改 checkLogin 函数
+        async function checkLogin() {
+            try {
+                const isLoggedIn = localStorage.getItem('isLoggedIn');
+                const loginExpiry = localStorage.getItem('loginExpiry');
+                
+                if (isLoggedIn && loginExpiry && new Date().getTime() < parseInt(loginExpiry)) {
+                    document.getElementById('loginOverlay').style.display = 'none';
+                    return true;
+                } else {
+                    localStorage.removeItem('isLoggedIn');
+                    localStorage.removeItem('loginExpiry');
+                    document.getElementById('loginOverlay').style.display = 'flex';
+                    return false;
+                }
+            } catch (err) {
+                console.error('检查登录状态失败:', err);
+                return false;
             }
         }
 
-        function handleLogin() {
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const loginError = document.getElementById('loginError');
+        // 修改 handleLogin 函数
+        async function handleLogin() {
+            try {
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                const loginError = document.getElementById('loginError');
 
-            if (username === 'admin' && password === 'password123') {
-                // 设置登录状态，有效期一个月
-                const expiryDate = new Date();
-                expiryDate.setMonth(expiryDate.getMonth() + 1);
-                localStorage.setItem('isLoggedIn', 'true');
-                localStorage.setItem('loginExpiry', expiryDate.getTime().toString());
+                if (!username || !password) {
+                    loginError.textContent = '请输入用户名和密码';
+                    loginError.classList.add('show');
+                    return;
+                }
+
+                // 检查是否已经是邮箱格式
+                const email = username.includes('@') ? username : `${username}@zplprint.com`;
+                console.log('尝试登录邮箱:', email); // 添加调试信息
                 
+                // 登录
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+
+                // 保存登录状态
+                localStorage.setItem('isLoggedIn', 'true');
+                localStorage.setItem('loginExpiry', new Date().getTime() + (30 * 24 * 60 * 60 * 1000));
+                localStorage.setItem('username', username);
+                localStorage.setItem('uid', user.uid);
+
                 // 隐藏登录界面
                 document.getElementById('loginOverlay').style.display = 'none';
                 loginError.classList.remove('show');
+
+            } catch (err) {
+                console.error('登录失败:', err);
+                const loginError = document.getElementById('loginError');
                 
-                // 清空密码输入框
-                document.getElementById('password').value = '';
-            } else {
+                // 根据错误类型显示不同的错误信息
+                if (err.code === 'auth/invalid-email') {
+                    loginError.textContent = '邮箱格式不正确';
+                } else if (err.code === 'auth/user-not-found') {
+                    loginError.textContent = '用户不存在';
+                } else if (err.code === 'auth/wrong-password') {
+                    loginError.textContent = '密码错误';
+                } else {
+                    loginError.textContent = '登录失败，请重试';
+                }
+                
                 loginError.classList.add('show');
-                // 添加抖动效果
-                const loginContainer = document.querySelector('.login-container');
-                loginContainer.style.animation = 'none';
-                setTimeout(() => {
-                    loginContainer.style.animation = 'shake 0.5s ease-in-out';
-                }, 10);
             }
         }
 
-        // 页面加载时检查登录状态
-        window.addEventListener('load', checkLogin);
-
-        // 添加回车键登录支持
-        document.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && document.getElementById('loginOverlay').style.display !== 'none') {
-                handleLogin();
+        // 添加登出函数
+        async function handleLogout() {
+            try {
+                await auth.signOut();
+                localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('loginExpiry');
+                localStorage.removeItem('username');
+                localStorage.removeItem('uid');
+                document.getElementById('loginOverlay').style.display = 'flex';
+            } catch (err) {
+                console.error('登出失败:', err);
             }
-        });
+        }
 
-        // 在页面加载前就隐藏登录界面
+        // 初始化拖拽功能
+        function initDraggableStats() {
+            const statsWrapper = document.getElementById('statsWrapper');
+            let isDragging = false;
+            let currentX;
+            let currentY;
+            let initialX;
+            let initialY;
+            let xOffset = 0;
+            let yOffset = 0;
+
+            // 从localStorage加载保存的位置
+            const savedPosition = localStorage.getItem('statsPosition');
+            if (savedPosition) {
+                const { left, top } = JSON.parse(savedPosition);
+                statsWrapper.style.left = left + 'px';
+                statsWrapper.style.top = top + 'px';
+            }
+
+            // 鼠标按下事件
+            statsWrapper.addEventListener('mousedown', dragStart);
+
+            // 鼠标移动事件
+            document.addEventListener('mousemove', drag);
+
+            // 鼠标释放事件
+            document.addEventListener('mouseup', dragEnd);
+
+            function dragStart(e) {
+                initialX = e.clientX - xOffset;
+                initialY = e.clientY - yOffset;
+
+                if (e.target === statsWrapper) {
+                    isDragging = true;
+                    statsWrapper.classList.add('dragging');
+                }
+            }
+
+            function drag(e) {
+                if (isDragging) {
+                    e.preventDefault();
+                    
+                    currentX = e.clientX - initialX;
+                    currentY = e.clientY - initialY;
+
+                    xOffset = currentX;
+                    yOffset = currentY;
+
+                    setTranslate(currentX, currentY, statsWrapper);
+                }
+            }
+
+            function dragEnd(e) {
+                if (isDragging) {
+                    isDragging = false;
+                    statsWrapper.classList.remove('dragging');
+
+                    // 保存当前位置到localStorage
+                    const position = {
+                        left: statsWrapper.offsetLeft,
+                        top: statsWrapper.offsetTop
+                    };
+                    localStorage.setItem('statsPosition', JSON.stringify(position));
+                }
+            }
+
+            function setTranslate(xPos, yPos, el) {
+                // 获取视窗大小
+                const windowWidth = window.innerWidth;
+                const windowHeight = window.innerHeight;
+                
+                // 确保不会拖出视窗
+                const maxX = windowWidth - el.offsetWidth;
+                const maxY = windowHeight - el.offsetHeight;
+                
+                xPos = Math.min(Math.max(0, xPos), maxX);
+                yPos = Math.min(Math.max(0, yPos), maxY);
+                
+                el.style.left = xPos + 'px';
+                el.style.top = yPos + 'px';
+            }
+        }
+
+        // 在页面加载完成后初始化拖拽功能
         document.addEventListener('DOMContentLoaded', function() {
-            const directAccess = localStorage.getItem('directAccess');
-            if (directAccess === 'true') {
-                document.getElementById('loginOverlay').style.display = 'none';
-            }
+            // ... existing DOMContentLoaded code ...
+            initDraggableStats();
         });
     </script>
 </body>
-</html> 
+</html>

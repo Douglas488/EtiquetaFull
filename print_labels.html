@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>打印标签</title>
+    <script type="text/javascript" src="//labelary.com/js/jquery-1.11.2.min.js"></script>
+    <script type="text/javascript" src="//cdn.rawgit.com/Zebra/BrowserPrint-JavaScript/master/BrowserPrint-3.0.216.min.js"></script>
+    
+    <style>
+        .button {
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h2>ZPL标签打印</h2>
+    <select id="selected_device" onchange="onDeviceSelected(this);"></select>
+    <button class="button" onclick="printZPL()">打印标签</button>
+
+    <script>
+        var selected_device;
+        var devices = [];
+        
+        function setup() {
+            //获取本地打印机列表
+            BrowserPrint.getLocalDevices(function(device_list){
+                for(var i = 0; i < device_list.length; i++) {
+                    var device = device_list[i];
+                    if(device.deviceType == 'printer' && device.provider == 'com.zebra.ds.webdriver.desktop.provider.DefaultDeviceProvider'){
+                        devices.push(device);
+                        var option = document.createElement('option');
+                        option.text = device.name;
+                        option.value = i;
+                        document.getElementById("selected_device").appendChild(option);
+                    }
+                }
+            }, function(error){
+                console.log(error);
+            })
+        }
+
+        function onDeviceSelected(select){
+            selected_device = devices[select.value];
+        }
+
+        function printZPL() {
+            if(selected_device) {
+                // 这里是您的ZPL代码
+                var zpl = `^XA
+^CI28
+^LH0,0
+^FO40,40^BY3,,0^BCN,80,N,N^FDRNTT29176^FS
+// ... 其余ZPL代码 ...
+^PQ10,0,1,Y^XZ`;
+                
+                selected_device.send(zpl, printComplete, errorCallback);
+            } else {
+                alert("请先选择打印机");
+            }
+        }
+
+        function printComplete() {
+            alert("打印成功!");
+        }
+
+        function errorCallback(error) {
+            alert("打印出错: " + error);
+        }
+
+        window.onload = setup;
+    </script>
+</body>
+</html> 

@@ -8,6 +8,9 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <style>
         :root {
             --primary-color: #2c3e50;
@@ -482,6 +485,35 @@
 
     <script>
         let zplContent = '';
+        let auth;
+        let db;
+
+        // 初始化 Firebase
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                const firebaseConfig = {
+                    apiKey: "AIzaSyDSgBsYlzT471RdyvuIEINFo4ZslnXqfgA",
+                    authDomain: "zpl-print-system.firebaseapp.com",
+                    projectId: "zpl-print-system",
+                    storageBucket: "zpl-print-system.firebasestorage.app",
+                    messagingSenderId: "795878947199",
+                    appId: "1:795878947199:web:8933213433cb2d2f3f824a",
+                    measurementId: "G-EQ7FT85SXW"
+                };
+
+                // 初始化 Firebase
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                db = firebase.firestore();
+
+                console.log('Firebase服务初始化成功');
+                
+                // 检查登录状态
+                checkLogin();
+            } catch (err) {
+                console.error('Firebase服务初始化失败:', err);
+            }
+        });
 
         // 添加文件拖放功能
         const dropZone = document.getElementById('dropZone');
@@ -537,65 +569,88 @@
             }
         });
 
-        // 统一的文件处理函数
+        // 修改文件处理函数
         function handleFile(file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                zplContent = e.target.result;
-                previewLabels();
-            };
-            reader.readAsText(file);
-        }
+            try {
+                if (!file || !(file instanceof Blob)) {
+                    throw new Error('无效的文件');
+                }
 
-        // 特殊字符映射表
-        const specialCharsMap = {
-            // ... 保持与之前相同的特殊字符映射 ...
-        };
+                if (!(file.name.endsWith('.txt') || file.name.endsWith('.zpl'))) {
+                    throw new Error('请选择.txt或.zpl文件');
+                }
 
-        function replaceSpecialChars(text) {
-            if (!text) return '';
-            let result = text;
-            for (let key in specialCharsMap) {
-                const regex = new RegExp(key, 'g');
-                result = result.replace(regex, specialCharsMap[key]);
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    try {
+                        zplContent = e.target.result;
+                        console.log('文件内容:', zplContent); // 添加调试日志
+                        
+                        // 先尝试解析文件
+                        const labels = parseZPL(zplContent);
+                        console.log('解析结果:', labels); // 添加调试日志
+                        
+                        if (labels.length === 0) {
+                            throw new Error('未能从文件中解析出标签内容');
+                        }
+                        
+                        // 解析成功后预览标签
+                        previewLabels();
+                        // 显示统计栏
+                        document.getElementById('statsContainer').style.display = 'flex';
+                    } catch (err) {
+                        console.error('解析文件失败:', err);
+                        alert('解析文件失败: ' + err.message);
+                    }
+                };
+
+                reader.onerror = function() {
+                    throw new Error('读取文件失败');
+                };
+                
+                reader.readAsText(file);
+            } catch (err) {
+                console.error('处理文件失败:', err);
+                alert('处理文件失败: ' + err.message);
             }
-            return result;
         }
 
-        // 解析ZPL文件中的QR码内容
+        // 修改解析ZPL的正则表达式
         function parseZPL(zpl) {
             const labels = [];
             const labelSegments = zpl.split('^XA').filter(segment => segment.trim());
             
+            console.log('分割后的段落数:', labelSegments.length);
+            
             for(let segment of labelSegments) {
                 const label = {
                     qrContent: '',
-                    envio: '',
-                    id: ''
+                    envioNumber: '',
+                    storeInfo: ''
                 };
 
                 // 提取QR码内容
-                let qrMatch = segment.match(/\^BQN,[^~]*?\^FDLA,([^\^]+)\^FS/);
-                if (!qrMatch) {
-                    qrMatch = segment.match(/\^BQ,[^~]*?\^FDLA,([^\^]+)\^FS/);
-                }
+                const qrMatch = segment.match(/\^(?:BQN|BQ),[^~]*?\^FD(?:LA,)?([^\^]+)\^FS/);
                 if(qrMatch) {
-                    label.qrContent = qrMatch[1].trim();
+                    label.qrContent = qrMatch[1];
                 }
 
-                // 提取发货编号
-                const envioMatch = segment.match(/ENVIO\s+(\d+\/\d+)/);
+                // 提取 ENVIO 号码
+                const envioMatch = segment.match(/ENVIO\s+([0-9/]+)/);
                 if(envioMatch) {
-                    label.envio = envioMatch[1];
+                    label.envioNumber = envioMatch[1].trim();
                 }
 
-                // 提取ID信息
-                const idMatch = segment.match(/XL070 - ID:\s*(\d+)/);
-                if(idMatch) {
-                    label.id = idMatch[1];
+                // 修改店名和ID的匹配 - 使用更精确的正则表达式
+                const storeMatch = segment.match(/\^FD([A-Z0-9]+\s*-\s*ID:\s*[0-9]+)\^FS/);
+                if(storeMatch) {
+                    label.storeInfo = storeMatch[1];
                 }
 
-                if(label.qrContent) {
+                console.log('解析结果:', label);
+
+                if(label.qrContent || label.envioNumber || label.storeInfo) {
                     labels.push(label);
                 }
             }
@@ -616,7 +671,7 @@
 
             // 确保所有标签内容都被正确解析
             labels.forEach((label, index) => {
-                if (!label.qrContent || !label.envio) {
+                if (!label.qrContent || !label.envioNumber) {
                     console.warn('标签内容不完整:', label);
                     return;
                 }
@@ -631,8 +686,8 @@
                     <div class="label-content">
                         <div class="title">ETIQUETA DE VOLUME</div>
                         <div class="qrcode-container" id="qrcode_${index}"></div>
-                        <div class="envio">ENVIO ${label.envio}</div>
-                        <div class="id">XL070 - ID: ${label.id}</div>
+                        <div class="envio">ENVIO ${label.envioNumber}</div>
+                        <div class="id">${label.storeInfo}</div>
                     </div>
                 `;
 
@@ -668,111 +723,148 @@
             updateStats();
         }
 
-        function printSingleLabel(label) {
-            const printButton = event.target;
-            const printWindow = window.open('', '_blank');
-            
-            const printContent = /* html */`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"><\/script>
-                    <style>
-                        @page {
-                            size: 60mm 40mm;
-                            margin: 0;
-                        }
-                        body {
-                            margin: 0;
-                            font-family: Arial, sans-serif;
-                        }
-                        .label {
-                            width: 60mm;
-                            height: 40mm;
-                            position: relative;
-                            page-break-after: always;
-                            box-sizing: border-box;
-                            background: white;
-                        }
-                        .label-content {
-                            width: 100%;
-                            position: relative;
-                            height: 40mm;
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            justify-content: center;
-                            padding: 2mm 0;
-                            box-sizing: border-box;
-                        }
-                        .title {
-                            position: absolute;
-                            top: 2.5mm;
-                            width: 100%;
-                            text-align: center;
-                            font-size: 8px;
-                            font-weight: bold;
-                        }
-                        .qrcode-container {
-                            width: 23mm;
-                            height: 23mm;
-                            margin: 4mm 0 2mm 0;
-                            text-align: center;
-                        }
-                        .envio {
-                            width: 100%;
-                            text-align: center;
-                            font-size: 12px;
-                            font-weight: bold;
-                            margin-bottom: 1mm;
-                        }
-                        .id {
-                            width: 100%;
-                            text-align: center;
-                            font-size: 8px;
-                            color: #666;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="label">
-                        <div class="label-content">
-                            <div class="title">ETIQUETA DE VOLUME</div>
-                            <div class="qrcode-container" id="print_qrcode"></div>
-                            <div class="envio">ENVIO ${label.envio}</div>
-                            <div class="id">XL070 - ID: ${label.id}</div>
+        function printSingleLabel(data) {
+            try {
+                const printButton = data.event?.target || event?.target;
+                if (!printButton) {
+                    throw new Error('无法获取打印按钮');
+                }
+
+                const printWindow = window.open('', '_blank');
+                const printContent = /* html */`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"><\/script>
+                        <style>
+                            @page {
+                                size: 60mm 40mm;
+                                margin: 0;
+                            }
+                            body {
+                                margin: 0;
+                                font-family: Arial, sans-serif;
+                            }
+                            .label {
+                                width: 60mm;
+                                height: 40mm;
+                                position: relative;
+                                page-break-after: always;
+                                box-sizing: border-box;
+                                background: white;
+                            }
+                            .label-content {
+                                width: 100%;
+                                position: relative;
+                                height: 40mm;
+                                display: flex;
+                                flex-direction: column;
+                                align-items: center;
+                                justify-content: center;
+                                padding: 2mm 0;
+                                box-sizing: border-box;
+                            }
+                            .title {
+                                position: absolute;
+                                top: 2.5mm;
+                                width: 100%;
+                                text-align: center;
+                                font-size: 8px;
+                                font-weight: bold;
+                            }
+                            .qrcode-container {
+                                width: 23mm;
+                                height: 23mm;
+                                margin: 4mm 0 2mm 0;
+                                text-align: center;
+                            }
+                            .envio {
+                                width: 100%;
+                                text-align: center;
+                                font-size: 12px;
+                                font-weight: bold;
+                                margin-bottom: 1mm;
+                            }
+                            .id {
+                                width: 100%;
+                                text-align: center;
+                                font-size: 8px;
+                                color: #666;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="label">
+                            <div class="label-content">
+                                <div class="title">ETIQUETA DE VOLUME</div>
+                                <div class="qrcode-container" id="print_qrcode"></div>
+                                <div class="envio">ENVIO ${data.envioNumber}</div>
+                                <div class="id">${data.storeInfo}</div>
+                            </div>
                         </div>
-                    </div>
-                </body>
-                </html>
-            `;
-            
-            printWindow.document.write(printContent);
-            
-            printWindow.onload = function() {
-                const qr = new QRious({
-                    element: document.createElement('canvas'),
-                    value: label.qrContent,
-                    size: 300,
-                    level: 'H'
-                });
-                const img = new Image();
-                img.src = qr.toDataURL();
-                img.style.width = '23mm';
-                img.style.height = '23mm';
-                printWindow.document.getElementById('print_qrcode').appendChild(img);
+                    </body>
+                    </html>
+                `;
                 
-                setTimeout(() => {
-                    printWindow.print();
-                    printWindow.close();
-                    printButton.classList.add('printed');
-                    printButton.innerHTML = '<i class="fas fa-check"></i> 已打印';
-                    updateStats();
-                }, 500);
-            };
-            
-            printWindow.document.close();
+                printWindow.document.write(printContent);
+                
+                printWindow.onload = function() {
+                    const qr = new QRious({
+                        element: document.createElement('canvas'),
+                        value: data.qrContent,
+                        size: 300,
+                        level: 'H'
+                    });
+                    const img = new Image();
+                    img.src = qr.toDataURL();
+                    img.style.width = '23mm';
+                    img.style.height = '23mm';
+                    printWindow.document.getElementById('print_qrcode').appendChild(img);
+                    
+                    setTimeout(async () => {
+                        try {
+                            printWindow.print();
+                            printWindow.close();
+                            
+                            // 只有在不是从历史记录重新打印时才保存记录
+                            if (!data.fromHistory) {
+                                const uid = localStorage.getItem('uid');
+                                const username = localStorage.getItem('username');
+                                
+                                if (!uid || !username) {
+                                    throw new Error('用户未登录');
+                                }
+
+                                // 保存QR码打印记录
+                                await db.collection('printRecords').add({
+                                    userId: uid,
+                                    username: username,
+                                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                                    envio: data.envioNumber,
+                                    id: data.storeInfo,
+                                    qrContent: data.qrContent,
+                                    source: 'index2',  // 标记来源为 index2
+                                    type: 'qr'  // 标记为QR码类型
+                                });
+                            }
+                            
+                            printButton.classList.add('printed');
+                            printButton.innerHTML = '<i class="fas fa-check"></i> 已打印';
+                            updateStats();
+                            
+                        } catch (err) {
+                            console.error('打印或保存记录失败:', err);
+                            alert('打印失败: ' + err.message);
+                        }
+                    }, 500);
+                };
+                
+                printWindow.document.close();
+            } catch (err) {
+                console.error('打印失败:', err);
+                alert(`打印失败: ${err.message}`);
+            }
         }
 
         function handlePrint() {
@@ -784,7 +876,7 @@
             const labels = parseZPL(zplContent);
             const printWindow = window.open('', '_blank');
             
-            const printContent = /* html */`
+            const printContent = `
                 <!DOCTYPE html>
                 <html>
                 <head>
@@ -853,8 +945,8 @@
                             <div class="label-content">
                                 <div class="title">ETIQUETA DE VOLUME</div>
                                 <div class="qrcode-container" id="print_qrcode_${index}"></div>
-                                <div class="envio">ENVIO ${label.envio}</div>
-                                <div class="id">XL070 - ID: ${label.id}</div>
+                                <div class="envio">ENVIO ${label.envioNumber}</div>
+                                <div class="id">${label.storeInfo}</div>
                             </div>
                         </div>
                     `).join('')}
@@ -864,11 +956,12 @@
             
             printWindow.document.write(printContent);
             
-            printWindow.onload = function() {
-                labels.forEach((label, index) => {
+            printWindow.onload = async function() {
+                // 为每个标签生成QR码
+                for(let i = 0; i < labels.length; i++) {
                     const qr = new QRious({
                         element: document.createElement('canvas'),
-                        value: label.qrContent,
+                        value: labels[i].qrContent,
                         size: 300,
                         level: 'H'
                     });
@@ -876,50 +969,78 @@
                     img.src = qr.toDataURL();
                     img.style.width = '23mm';
                     img.style.height = '23mm';
-                    printWindow.document.getElementById(`print_qrcode_${index}`).appendChild(img);
-                });
+                    printWindow.document.getElementById(`print_qrcode_${i}`).appendChild(img);
+                }
                 
-                setTimeout(() => {
-                    printWindow.print();
-                    printWindow.close();
+                setTimeout(async () => {
+                    try {
+                        printWindow.print();
+                        printWindow.close();
+                        
+                        // 保存打印记录
+                        const uid = localStorage.getItem('uid');
+                        const username = localStorage.getItem('username');
+                        
+                        if (!uid || !username) {
+                            throw new Error('用户未登录');
+                        }
+
+                        // 批量保存所有标签的打印记录
+                        const batch = db.batch();
+                        labels.forEach(label => {
+                            const docRef = db.collection('printRecords').doc();
+                            batch.set(docRef, {
+                                userId: uid,
+                                username: username,
+                                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                                envio: label.envioNumber,
+                                id: label.storeInfo,
+                                qrContent: label.qrContent,
+                                source: 'index2',
+                                type: 'qr'
+                            });
+                        });
+                        await batch.commit();
+
+                        // 更新所有打印按钮状态
+                        document.querySelectorAll('.print-single').forEach(button => {
+                            button.classList.add('printed');
+                            button.innerHTML = '<i class="fas fa-check"></i> 已打印';
+                        });
+                        
+                        // 更新统计信息
+                        updateStats();
+                        
+                    } catch (err) {
+                        console.error('打印或保存记录失败:', err);
+                        alert('打印失败: ' + err.message);
+                    }
                 }, 500);
             };
             
             printWindow.document.close();
         }
 
-        // 添加统计信息更新函数
         function updateStats() {
             const labels = parseZPL(zplContent);
-            const statsContainer = document.getElementById('statsContainer');
-            
-            if (labels.length > 0) {
-                const totalLabels = labels.length;  // 总标签数
-                const printedLabels = document.querySelectorAll('.print-single.printed').length;
-                const pendingLabels = totalLabels - printedLabels;
+            const totalLabels = labels.length;
+            const printedButtons = document.querySelectorAll('.print-single.printed');
+            const printedLabels = printedButtons.length;
+            const pendingLabels = totalLabels - printedLabels;
 
-                document.getElementById('totalLabels').textContent = totalLabels;
-                document.getElementById('printedLabels').textContent = printedLabels;
-                document.getElementById('pendingLabels').textContent = pendingLabels;
-                
-                statsContainer.style.display = 'flex';
-            } else {
-                statsContainer.style.display = 'none';
-            }
+            // 显示统计栏
+            document.getElementById('statsContainer').style.display = 'flex';
+            
+            // 更新统计数据
+            document.getElementById('totalLabels').textContent = totalLabels;
+            document.getElementById('printedLabels').textContent = printedLabels;
+            document.getElementById('pendingLabels').textContent = pendingLabels;
         }
 
+        // 添加返回index页面的函数
         function navigateToIndex() {
-            // 检查登录状态
-            const isLoggedIn = localStorage.getItem('isLoggedIn');
-            const loginExpiry = localStorage.getItem('loginExpiry');
-            
-            // 如果登录状态有效，设置一个特殊的标记
-            if (isLoggedIn && loginExpiry && new Date().getTime() < parseInt(loginExpiry)) {
-                localStorage.setItem('directAccess', 'true');
-            }
-            sessionStorage.setItem('fromNavigation', 'true');
             window.location.href = 'index.html';
         }
     </script>
 </body>
-</html> 
+</html>

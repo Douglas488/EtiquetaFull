@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>标签预览和打印</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        .preview-container {
+            margin: 20px;
+        }
+        .button {
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h2>ZPL标签预览和打印</h2>
+    <button class="button" onclick="previewZPL()">预览标签</button>
+    <button class="button" onclick="printPreview()">打印预览图</button>
+    
+    <div class="preview-container">
+        <img id="label-preview" />
+    </div>
+
+    <script>
+        function previewZPL() {
+            var zpl = `^XA
+^CI28
+^LH0,0
+^FO40,40^BY3,,0^BCN,80,N,N^FDRNTT29176^FS
+// ... 其余ZPL代码 ...
+^PQ10,0,1,Y^XZ`;
+
+            // 使用Labelary API转换ZPL为图片
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'http://api.labelary.com/v1/printers/8dpmm/labels/4x6/0/');
+            xhr.setRequestHeader('Accept', 'image/png');
+            xhr.responseType = 'blob';
+            
+            xhr.onload = function() {
+                if (this.status === 200) {
+                    var blob = new Blob([this.response], {type: 'image/png'});
+                    var img = document.getElementById('label-preview');
+                    img.src = URL.createObjectURL(blob);
+                }
+            };
+            
+            xhr.send(zpl);
+        }
+
+        function printPreview() {
+            var img = document.getElementById('label-preview');
+            if(img.src) {
+                var win = window.open('');
+                win.document.write('<img src="' + img.src + '" onload="window.print();window.close()"/>');
+            } else {
+                alert('请先预览标签');
+            }
+        }
+    </script>
+</body>
+</html> 

@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>打印历史记录</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'><path fill='%233498db' d='M0 448V64h18v384H0zm32-384v384h96V64H32zm128 384h96V64h-96v384zm128 0h96V64h-96v384zm128 0h32V64h-32v384z'/></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --background-color: #f8f9fa;
+            --text-color: #2c3e50;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+        }
+
+        .header h1 {
+            margin: 0;
+            color: var(--primary-color);
+            white-space: nowrap;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            white-space: nowrap;
+        }
+
+        .search-box {
+            position: relative;
+            width: 300px;
+            margin: 0 2rem;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            padding-right: 2.5rem;
+            border: 2px solid var(--secondary-color);
+            border-radius: var(--border-radius);
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--secondary-color);
+        }
+
+        .back-button {
+            padding: 0.8rem 1.5rem;
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .back-button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .history-date-group {
+            margin-bottom: 1.5rem;
+            background: white;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: var(--box-shadow);
+        }
+
+        .history-date {
+            background: var(--primary-color);
+            color: white;
+            padding: 0.8rem 1rem;
+            font-weight: 500;
+        }
+
+        .history-item {
+            padding: 1rem;
+            border-bottom: 1px solid #eee;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .record-name {
+            font-weight: 500;
+            color: var(--secondary-color);
+        }
+
+        .print-time {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .product-info {
+            padding: 0.5rem 0;
+        }
+
+        .product-name {
+            font-weight: 500;
+            margin-bottom: 0.3rem;
+        }
+
+        .history-info {
+            display: flex;
+            gap: 1rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .no-history {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+        }
+
+        .print-button {
+            padding: 0.5rem 1rem;
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .print-button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .delete-button {
+            padding: 0.8rem 1.5rem;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .delete-button:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
+        }
+
+        .highlight {
+            background-color: yellow;
+            padding: 0 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>打印历史记录</h1>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="输入 SKU 或 ID 搜索..." />
+                <i class="fas fa-search search-icon"></i>
+            </div>
+            <div class="header-controls">
+                <button class="delete-button" onclick="deleteOldRecords()">
+                    <i class="fas fa-trash"></i> 删除45天前记录
+                </button>
+                <button class="back-button" onclick="window.location.href='index.html'">
+                    <i class="fas fa-arrow-left"></i> 返回主页
+                </button>
+            </div>
+        </div>
+        <div id="printHistoryList"></div>
+    </div>
+
+    <script>
+        // Firebase 配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyDSgBsYlzT471RdyvuIEINFo4ZslnXqfgA",
+            authDomain: "zpl-print-system.firebaseapp.com",
+            projectId: "zpl-print-system",
+            storageBucket: "zpl-print-system.firebasestorage.app",
+            messagingSenderId: "795878947199",
+            appId: "1:795878947199:web:8933213433cb2d2f3f824a",
+            measurementId: "G-EQ7FT85SXW"
+        };
+
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // 获取打印历史记录
+        async function getPrintHistory() {
+            try {
+                const uid = localStorage.getItem('uid');
+                if (!uid) {
+                    console.error('未找到用户ID');
+                    return [];
+                }
+
+                console.log('正在获取用户记录，用户ID:', uid);
+                console.log('Firestore中的记录ID:', 'QllrnV1UqZRPKLyploXOJxzf1PX2');
+                
+                const snapshot = await db.collection('printRecords')
+                    .orderBy('timestamp', 'desc')
+                    .limit(50)
+                    .get();
+
+                console.log('查询结果:', snapshot.size, '条记录');
+                console.log('查询到的记录:', snapshot.docs.map(doc => doc.data()));
+                
+                const records = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    timestamp: doc.data().timestamp?.toDate()?.toISOString()
+                }));
+
+                console.log('处理后的记录:', records);
+                return records;
+                
+            } catch (err) {
+                console.error('获取打印历史记录失败:', err);
+                console.error('错误详情:', err.message);
+                return [];
+            }
+        }
+
+        // 添加搜索功能
+        let allRecords = [];  // 存储所有记录
+
+        // 修改 displayPrintHistory 函数
+        async function displayPrintHistory(searchTerm = '') {
+            try {
+                const historyList = document.getElementById('printHistoryList');
+                if (!historyList) {
+                    console.error('未找到历史记录列表元素');
+                    return;
+                }
+
+                if (!allRecords.length) {
+                    allRecords = await getPrintHistory();
+                }
+
+                let filteredRecords = allRecords;
+                if (searchTerm) {
+                    searchTerm = searchTerm.toLowerCase();
+                    filteredRecords = allRecords.filter(record => {
+                        if (record.source === 'index2') {
+                            return record.id?.toLowerCase().includes(searchTerm);
+                        } else {
+                            return record.sku?.toLowerCase().includes(searchTerm);
+                        }
+                    });
+                }
+
+                console.log('获取到记录数量:', filteredRecords.length);
+                
+                if (filteredRecords.length === 0) {
+                    historyList.innerHTML = '<div class="no-history">暂无打印记录</div>';
+                    return;
+                }
+                
+                // 按日期分组记录
+                const groupedRecords = {};
+                filteredRecords.forEach(record => {
+                    if (!record.timestamp) {
+                        console.warn('记录缺少时间戳:', record);
+                        return;
+                    }
+                    const date = new Date(record.timestamp).toLocaleDateString('zh-CN');
+                    if (!groupedRecords[date]) {
+                        groupedRecords[date] = [];
+                    }
+                    groupedRecords[date].push(record);
+                });
+
+                historyList.innerHTML = Object.entries(groupedRecords).map(([date, dateRecords]) => `
+                    <div class="history-date-group">
+                        <div class="history-date">${date}</div>
+                        ${dateRecords.map(record => {
+                            // 处理记录名称显示格式
+                            let displayName = record.recordName || '';
+                            if (record.timestamp && record.storeName) {
+                                const recordDate = new Date(record.timestamp);
+                                const day = recordDate.getDate().toString().padStart(2, '0');
+                                const month = (recordDate.getMonth() + 1).toString().padStart(2, '0');
+                                displayName = `${day}${month}.${record.storeName}`;
+                            }
+
+                            if (record.source === 'index2') {
+                                // QR码标签的显示模板
+                                return `
+                                    <div class="history-item">
+                                        <div class="history-details">
+                                            <div class="history-header">
+                                                <span class="record-name">QR码标签</span>
+                                                <span class="print-time">${new Date(record.timestamp).toLocaleTimeString('zh-CN')}</span>
+                                            </div>
+                                            <div class="product-info">
+                                                <div class="product-name">ENVIO ${record.envio}</div>
+                                                <div class="history-info">
+                                                    <span>ID: ${highlightText(record.id, searchTerm)}</span>
+                                                    <span>QR内容: ${record.qrContent}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button class="print-button" onclick='printFromHistory(${JSON.stringify(record)})'>
+                                            <i class="fas fa-print"></i> 重新打印
+                                        </button>
+                                    </div>
+                                `;
+                            } else {
+                                // 条形码标签显示模板
+                                return `
+                                    <div class="history-item">
+                                        <div class="history-details">
+                                            <div class="history-header">
+                                                <span class="record-name">${displayName}</span>
+                                                <span class="print-time">${new Date(record.timestamp).toLocaleTimeString('zh-CN')}</span>
+                                            </div>
+                                            <div class="product-info">
+                                                <div class="product-name">${record.productName || '未知商品'}</div>
+                                                <div class="history-info">
+                                                    <span>SKU: ${highlightText(record.sku, searchTerm)}</span>
+                                                    <span>条码: ${record.barcode || '无'}</span>
+                                                    <span>数量: ${record.quantity || 1}</span>
+                                                    ${record.storeName ? `<span>店名: ${record.storeName}</span>` : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button class="print-button" onclick='printFromHistory(${JSON.stringify(record)})'>
+                                            <i class="fas fa-print"></i> 重新打印
+                                        </button>
+                                    </div>
+                                `;
+                            }
+                        }).join('')}
+                    </div>
+                `).join('');
+                
+            } catch (err) {
+                console.error('显示打印历史记录失败:', err);
+                const historyList = document.getElementById('printHistoryList');
+                historyList.innerHTML = '<div class="no-history">加载记录失败，请刷新页面重试</div>';
+            }
+        }
+
+        // 添加搜索事件监听
+        document.getElementById('searchInput').addEventListener('input', debounce((e) => {
+            displayPrintHistory(e.target.value);
+        }, 300));
+
+        // 防抖函数
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // 检查登录状态并显示历史记录
+        auth.onAuthStateChanged(async (user) => {
+            try {
+                if (user) {
+                    console.log('当前登录用户ID:', user.uid);
+                    console.log('localStorage中的用户ID:', localStorage.getItem('uid'));
+                    
+                    localStorage.setItem('uid', user.uid);
+                    await displayPrintHistory();
+                } else {
+                    console.log('用户未登录，重定向到登录页面');
+                    window.location.href = 'index.html';
+                }
+            } catch (err) {
+                console.error('处理用户状态变化失败:', err);
+            }
+        });
+
+        // 添加打印功能
+        async function printFromHistory(record) {
+            try {
+                // 获取来源页面（可以在保存记录时添加 source 字段）
+                const source = record.source || 'index'; // 默认为 index
+                
+                // 创建一个隐藏的 iframe 来加载原始页面
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+                
+                // 根据来源加载不同的页面
+                iframe.src = `${source}.html`;
+                
+                iframe.onload = function() {
+                    try {
+                        // 获取 iframe 中的打印函数
+                        const printFunction = iframe.contentWindow.printSingleLabel;
+                        if (printFunction) {
+                            // 创建一个模拟的事件对象
+                            const mockEvent = {
+                                target: document.createElement('button')
+                            };
+                            mockEvent.target.classList = 'print-single';
+                            
+                            // 使用 call 方法调用打印函数，传入事件对象和标签数据
+                            printFunction.call(iframe.contentWindow, {
+                                ...record,
+                                event: mockEvent,
+                                fromHistory: true  // 添加标记表示这是从历史记录重新打印
+                            });
+                        } else {
+                            throw new Error('未找到打印函数');
+                        }
+                        
+                        // 清理 iframe
+                        setTimeout(() => {
+                            document.body.removeChild(iframe);
+                        }, 1000);
+                    } catch (err) {
+                        console.error('调用打印函数失败:', err);
+                        alert('打印失败: ' + err.message);
+                        document.body.removeChild(iframe);
+                    }
+                };
+            } catch (err) {
+                console.error('打印失败:', err);
+                alert(`打印失败: ${err.message}`);
+            }
+        }
+
+        // 删除旧记录功能
+        async function deleteOldRecords() {
+            try {
+                if (!confirm('确定要删除45天前的记录吗？此操作不可恢复。')) {
+                    return;
+                }
+
+                const cutoffDate = new Date();
+                cutoffDate.setDate(cutoffDate.getDate() - 45);
+
+                const batch = db.batch();
+                const snapshot = await db.collection('printRecords')
+                    .where('timestamp', '<', cutoffDate)
+                    .get();
+
+                if (snapshot.empty) {
+                    alert('没有找到需要删除的记录');
+                    return;
+                }
+
+                let count = 0;
+                snapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                    count++;
+                });
+
+                await batch.commit();
+                alert(`成功删除 ${count} 条记录`);
+                
+                // 刷新显示
+                allRecords = await getPrintHistory();
+                displayPrintHistory(document.getElementById('searchInput').value);
+
+            } catch (err) {
+                console.error('删除记录失败:', err);
+                alert('删除记录失败: ' + err.message);
+            }
+        }
+
+        // 高亮搜索结果
+        function highlightText(text, searchTerm) {
+            if (!searchTerm) return text;
+            const regex = new RegExp(`(${searchTerm})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+    </script>
+</body>
+</html> 
