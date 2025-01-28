@@ -492,8 +492,40 @@
                     return new Promise((resolve, reject) => {
                         const iframe = document.createElement('iframe');
                         iframe.style.display = 'none';
+                        iframe.style.width = '100%';
+                        iframe.style.height = '100%';
                         
-                        iframe.onload = () => resolve(iframe);
+                        // 等待iframe完全加载
+                        iframe.onload = async () => {
+                            try {
+                                // 等待一段时间确保页面完全初始化
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+                                
+                                // 检查iframe内容是否正确加载
+                                if (!iframe.contentWindow || !iframe.contentWindow.document) {
+                                    reject(new Error('iframe内容未正确加载'));
+                                    return;
+                                }
+                                
+                                // 等待Firebase初始化完成
+                                let attempts = 0;
+                                const maxAttempts = 10;
+                                
+                                while (attempts < maxAttempts) {
+                                    if (iframe.contentWindow.printSingleLabel) {
+                                        resolve(iframe);
+                                        return;
+                                    }
+                                    await new Promise(resolve => setTimeout(resolve, 500));
+                                    attempts++;
+                                }
+                                
+                                reject(new Error('打印函数加载超时'));
+                            } catch (err) {
+                                reject(err);
+                            }
+                        };
+                        
                         iframe.onerror = () => reject(new Error('iframe加载失败'));
                         
                         document.body.appendChild(iframe);
@@ -503,16 +535,8 @@
 
                 // 等待iframe加载完成
                 const iframe = await loadIframe();
-                
-                // 确保iframe内容完全加载
-                await new Promise(resolve => setTimeout(resolve, 1000));
 
                 try {
-                    // 检查iframe是否正确加载
-                    if (!iframe.contentWindow || !iframe.contentWindow.document) {
-                        throw new Error('iframe内容未正确加载');
-                    }
-
                     // 获取打印函数
                     const printFunction = iframe.contentWindow.printSingleLabel;
                     if (!printFunction) {
