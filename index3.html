@@ -219,12 +219,36 @@
             background-color: yellow;
             padding: 0 2px;
         }
+
+        /* 语言切换按钮样式 */
+        .language-button {
+            padding: 0.8rem 1.5rem;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .language-button:hover {
+            background: #34495e;
+            transform: translateY(-2px);
+        }
+
+        .language-button i {
+            font-size: 1.2rem;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>打印历史记录</h1>
+            <h1><i class="fas fa-history"></i> 打印历史记录</h1>
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="输入 SKU 或 ID 搜索..." />
                 <i class="fas fa-search search-icon"></i>
@@ -235,6 +259,10 @@
                 </button>
                 <button class="back-button" onclick="window.location.href='index.html'">
                     <i class="fas fa-arrow-left"></i> 返回主页
+                </button>
+                <button class="language-button" onclick="toggleLanguage()">
+                    <i class="fas fa-language"></i>
+                    <span id="currentLang">PT</span>
                 </button>
             </div>
         </div>
@@ -324,8 +352,12 @@
 
                 console.log('获取到记录数量:', filteredRecords.length);
                 
+                // 获取当前语言的翻译
+                const currentLang = getCurrentLanguage();
+                const trans = translations[currentLang];
+
                 if (filteredRecords.length === 0) {
-                    historyList.innerHTML = '<div class="no-history">暂无打印记录</div>';
+                    historyList.innerHTML = `<div class="no-history">${trans.noRecords}</div>`;
                     return;
                 }
                 
@@ -374,7 +406,7 @@
                                             </div>
                                         </div>
                                         <button class="print-button" onclick='printFromHistory(${JSON.stringify(record)})'>
-                                            <i class="fas fa-print"></i> 重新打印
+                                            <i class="fas fa-print"></i> ${trans.reprintButton}
                                         </button>
                                     </div>
                                 `;
@@ -398,7 +430,7 @@
                                             </div>
                                         </div>
                                         <button class="print-button" onclick='printFromHistory(${JSON.stringify(record)})'>
-                                            <i class="fas fa-print"></i> 重新打印
+                                            <i class="fas fa-print"></i> ${trans.reprintButton}
                                         </button>
                                     </div>
                                 `;
@@ -410,7 +442,7 @@
             } catch (err) {
                 console.error('显示打印历史记录失败:', err);
                 const historyList = document.getElementById('printHistoryList');
-                historyList.innerHTML = '<div class="no-history">加载记录失败，请刷新页面重试</div>';
+                historyList.innerHTML = `<div class="no-history">${translations[getCurrentLanguage()].noRecords}</div>`;
             }
         }
 
@@ -450,18 +482,18 @@
             }
         });
 
-        // 添加打印功能
+        // 修改打印功能
         async function printFromHistory(record) {
             try {
-                // 获取来源页面（可以在保存记录时添加 source 字段）
-                const source = record.source || 'index'; // 默认为 index
+                // 获取来源页面
+                const source = record.source || 'index';
                 
-                // 创建一个隐藏的 iframe 来加载原始页面
+                // 创建一个隐藏的 iframe
                 const iframe = document.createElement('iframe');
                 iframe.style.display = 'none';
                 document.body.appendChild(iframe);
                 
-                // 根据来源加载不同的页面
+                // 加载对应页面
                 iframe.src = `${source}.html`;
                 
                 iframe.onload = function() {
@@ -469,18 +501,21 @@
                         // 获取 iframe 中的打印函数
                         const printFunction = iframe.contentWindow.printSingleLabel;
                         if (printFunction) {
-                            // 创建一个模拟的事件对象
-                            const mockEvent = {
-                                target: document.createElement('button')
-                            };
-                            mockEvent.target.classList = 'print-single';
+                            // 创建一个模拟的按钮
+                            const mockButton = document.createElement('button');
+                            mockButton.className = 'print-single';
                             
-                            // 使用 call 方法调用打印函数，传入事件对象和标签数据
-                            printFunction.call(iframe.contentWindow, {
+                            // 准备打印数据
+                            const printData = {
                                 ...record,
-                                event: mockEvent,
-                                fromHistory: true  // 添加标记表示这是从历史记录重新打印
-                            });
+                                fromHistory: true,
+                                event: {
+                                    target: mockButton
+                                }
+                            };
+
+                            // 调用打印函数
+                            printFunction.call(iframe.contentWindow, printData);
                         } else {
                             throw new Error('未找到打印函数');
                         }
@@ -488,7 +523,7 @@
                         // 清理 iframe
                         setTimeout(() => {
                             document.body.removeChild(iframe);
-                        }, 1000);
+                        }, 2000);  // 增加延时以确保打印完成
                     } catch (err) {
                         console.error('调用打印函数失败:', err);
                         alert('打印失败: ' + err.message);
@@ -497,14 +532,17 @@
                 };
             } catch (err) {
                 console.error('打印失败:', err);
-                alert(`打印失败: ${err.message}`);
+                alert('打印失败: ' + err.message);
             }
         }
 
         // 删除旧记录功能
         async function deleteOldRecords() {
             try {
-                if (!confirm('确定要删除45天前的记录吗？此操作不可恢复。')) {
+                const currentLang = getCurrentLanguage();
+                const trans = translations[currentLang];
+
+                if (!confirm(trans.deleteConfirm)) {
                     return;
                 }
 
@@ -517,7 +555,7 @@
                     .get();
 
                 if (snapshot.empty) {
-                    alert('没有找到需要删除的记录');
+                    alert(trans.deleteNoRecords);
                     return;
                 }
 
@@ -528,7 +566,7 @@
                 });
 
                 await batch.commit();
-                alert(`成功删除 ${count} 条记录`);
+                alert(trans.deleteSuccess.replace('{n}', count));
                 
                 // 刷新显示
                 allRecords = await getPrintHistory();
@@ -536,7 +574,7 @@
 
             } catch (err) {
                 console.error('删除记录失败:', err);
-                alert('删除记录失败: ' + err.message);
+                alert(translations[getCurrentLanguage()].deleteError + ': ' + err.message);
             }
         }
 
@@ -546,6 +584,91 @@
             const regex = new RegExp(`(${searchTerm})`, 'gi');
             return text.replace(regex, '<span class="highlight">$1</span>');
         }
+
+        // 添加语言配置
+        const translations = {
+            'zh': {
+                'pageTitle': '打印历史记录',
+                'searchPlaceholder': '输入 SKU 或 ID 搜索...',
+                'deleteOldRecords': '删除45天前记录',
+                'backToHome': '返回主页',
+                'noRecords': '暂无打印记录',
+                'loadError': '加载记录失败，请刷新页面重试',
+                'deleteConfirm': '确定要删除45天前的记录吗？此操作不可恢复。',
+                'deleteSuccess': '成功删除 {n} 条记录',
+                'deleteNoRecords': '没有找到需要删除的记录',
+                'qrcodeLabel': 'QR码标签',
+                'unknownProduct': '未知商品',
+                'reprintButton': '重新打印',
+                'printError': '打印失败',
+                'deleteError': '删除记录失败',
+                'printFunctionNotFound': '未找到打印函数'
+            },
+            'pt': {
+                'pageTitle': 'Histórico de Impressão',
+                'searchPlaceholder': 'Pesquisar SKU ou ID...',
+                'deleteOldRecords': 'Excluir registros com mais de 45 dias',
+                'backToHome': 'Voltar',
+                'noRecords': 'Nenhum registro encontrado',
+                'loadError': 'Falha ao carregar registros. Por favor, atualize a página',
+                'deleteConfirm': 'Tem certeza que deseja excluir os registros com mais de 45 dias? Esta ação não pode ser desfeita.',
+                'deleteSuccess': '{n} registros excluídos com sucesso',
+                'deleteNoRecords': 'Nenhum registro para excluir',
+                'qrcodeLabel': 'Etiqueta QR',
+                'unknownProduct': 'Produto desconhecido',
+                'reprintButton': 'Reimprimir',
+                'printError': 'Falha na impressão',
+                'deleteError': 'Falha ao excluir registros',
+                'printFunctionNotFound': 'Função de impressão não encontrada'
+            }
+        };
+
+        // 获取当前语言
+        function getCurrentLanguage() {
+            return localStorage.getItem('language') || 'zh';
+        }
+
+        // 切换语言
+        function toggleLanguage() {
+            const currentLang = getCurrentLanguage();
+            const newLang = currentLang === 'zh' ? 'pt' : 'zh';
+            localStorage.setItem('language', newLang);
+            document.getElementById('currentLang').textContent = newLang.toUpperCase();
+            updatePageLanguage();
+        }
+
+        // 更新页面语言
+        function updatePageLanguage() {
+            const currentLang = getCurrentLanguage();
+            const trans = translations[currentLang];
+
+            // 更新页面标题
+            document.querySelector('h1').innerHTML = `<i class="fas fa-history"></i> ${trans.pageTitle}`;
+            
+            // 更新搜索框
+            document.getElementById('searchInput').placeholder = trans.searchPlaceholder;
+            
+            // 更新按钮文本
+            document.querySelector('.delete-button').innerHTML = 
+                `<i class="fas fa-trash"></i> ${trans.deleteOldRecords}`;
+            document.querySelector('.back-button').innerHTML = 
+                `<i class="fas fa-arrow-left"></i> ${trans.backToHome}`;
+
+            // 更新所有重新打印按钮
+            document.querySelectorAll('.print-button').forEach(button => {
+                button.innerHTML = `<i class="fas fa-print"></i> ${trans.reprintButton}`;
+            });
+
+            // 重新加载历史记录以更新所有文本
+            displayPrintHistory(document.getElementById('searchInput').value);
+        }
+
+        // 页面加载时初始化语言
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentLang = getCurrentLanguage();
+            document.getElementById('currentLang').textContent = currentLang.toUpperCase();
+            updatePageLanguage();
+        });
     </script>
 </body>
 </html> 

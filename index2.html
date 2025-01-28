@@ -435,6 +435,30 @@
         }
 
         /* 其他样式与条码标签相同，但调整了布局以适应QR码 */
+
+        /* 语言切换按钮样式 */
+        .language-button {
+            padding: 0.8rem 1.5rem;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .language-button:hover {
+            background: #34495e;
+            transform: translateY(-2px);
+        }
+
+        .language-button i {
+            font-size: 1.2rem;
+        }
     </style>
 </head>
 <body>
@@ -443,6 +467,10 @@
         <div class="header-content">
             <h2><i class="fas fa-qrcode"></i> QR码标签打印系统</h2>
             <div class="top-controls">
+                <button class="language-button" onclick="toggleLanguage()">
+                    <i class="fas fa-language"></i>
+                    <span id="currentLang">PT</span>
+                </button>
                 <button class="button" onclick="handlePrint()">
                     <i class="fas fa-print"></i> 打印全部
                 </button>
@@ -572,12 +600,15 @@
         // 修改文件处理函数
         function handleFile(file) {
             try {
+                const currentLang = getCurrentLanguage();
+                const trans = translations[currentLang];
+
                 if (!file || !(file instanceof Blob)) {
-                    throw new Error('无效的文件');
+                    throw new Error(trans.invalidFile);
                 }
 
                 if (!(file.name.endsWith('.txt') || file.name.endsWith('.zpl'))) {
-                    throw new Error('请选择.txt或.zpl文件');
+                    throw new Error(trans.invalidFile);
                 }
 
                 const reader = new FileReader();
@@ -601,7 +632,7 @@
                         document.getElementById('statsContainer').style.display = 'flex';
                     } catch (err) {
                         console.error('解析文件失败:', err);
-                        alert('解析文件失败: ' + err.message);
+                        alert(trans.parseError + ': ' + err.message);
                     }
                 };
 
@@ -612,7 +643,7 @@
                 reader.readAsText(file);
             } catch (err) {
                 console.error('处理文件失败:', err);
-                alert('处理文件失败: ' + err.message);
+                alert(trans.printError + ': ' + err.message);
             }
         }
 
@@ -660,8 +691,11 @@
 
         // 预览标签
         function previewLabels() {
+            const currentLang = getCurrentLanguage();
+            const trans = translations[currentLang];
+
             if(!zplContent) {
-                alert('请先选择ZPL文件');
+                alert(trans.noFile);
                 return;
             }
 
@@ -669,7 +703,6 @@
             const previewDiv = document.getElementById('labelPreview');
             previewDiv.innerHTML = '';
 
-            // 确保所有标签内容都被正确解析
             labels.forEach((label, index) => {
                 if (!label.qrContent || !label.envioNumber) {
                     console.warn('标签内容不完整:', label);
@@ -696,7 +729,7 @@
                 
                 const printButton = document.createElement('button');
                 printButton.className = 'print-single';
-                printButton.innerHTML = `<i class="fas fa-print"></i> 打印`;
+                printButton.innerHTML = `<i class="fas fa-print"></i> ${trans.printButton}`;
                 printButton.onclick = () => printSingleLabel(label);
                 containerDiv.appendChild(printButton);
                 
@@ -731,12 +764,22 @@
                 }
 
                 const printWindow = window.open('', '_blank');
-                const printContent = /* html */`
+                
+                // 从历史记录打印时使用记录中的数据
+                const qrContent = data.qrContent || data.qr;
+                const envioNumber = data.envioNumber || data.envio;
+                const storeInfo = data.storeInfo || data.id;
+
+                if (!qrContent || !envioNumber) {
+                    throw new Error('标签数据不完整');
+                }
+
+                const printContent = `
                     <!DOCTYPE html>
                     <html>
                     <head>
                         <meta charset="UTF-8">
-                        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"><\/script>
+                        <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"><\/script>
                         <style>
                             @page {
                                 size: 60mm 40mm;
@@ -779,6 +822,10 @@
                                 margin: 4mm 0 2mm 0;
                                 text-align: center;
                             }
+                            .qrcode-container img {
+                                width: 23mm;
+                                height: 23mm;
+                            }
                             .envio {
                                 width: 100%;
                                 text-align: center;
@@ -786,7 +833,7 @@
                                 font-weight: bold;
                                 margin-bottom: 1mm;
                             }
-                            .id {
+                            .store-info {
                                 width: 100%;
                                 text-align: center;
                                 font-size: 8px;
@@ -798,78 +845,86 @@
                         <div class="label">
                             <div class="label-content">
                                 <div class="title">ETIQUETA DE VOLUME</div>
-                                <div class="qrcode-container" id="print_qrcode"></div>
-                                <div class="envio">ENVIO ${data.envioNumber}</div>
-                                <div class="id">${data.storeInfo}</div>
+                                <div class="qrcode-container" id="qrcode"></div>
+                                <div class="envio">ENVIO ${envioNumber}</div>
+                                <div class="store-info">${storeInfo || ''}</div>
                             </div>
                         </div>
                     </body>
                     </html>
                 `;
-                
+
                 printWindow.document.write(printContent);
                 
+                // 等待页面加载完成后生成二维码
                 printWindow.onload = function() {
                     const qr = new QRious({
-                        element: document.createElement('canvas'),
-                        value: data.qrContent,
+                        element: printWindow.document.createElement('canvas'),
+                        value: qrContent,
                         size: 300,
                         level: 'H'
                     });
+
                     const img = new Image();
                     img.src = qr.toDataURL();
-                    img.style.width = '23mm';
-                    img.style.height = '23mm';
-                    printWindow.document.getElementById('print_qrcode').appendChild(img);
-                    
-                    setTimeout(async () => {
-                        try {
-                            printWindow.print();
-                            printWindow.close();
-                            
-                            // 只有在不是从历史记录重新打印时才保存记录
-                            if (!data.fromHistory) {
-                                const uid = localStorage.getItem('uid');
-                                const username = localStorage.getItem('username');
+                    img.onload = function() {
+                        printWindow.document.querySelector('.qrcode-container').appendChild(img);
+                        
+                        // 等待图片加载完成后再打印
+                        setTimeout(async () => {
+                            try {
+                                printWindow.print();
+                                printWindow.close();
                                 
-                                if (!uid || !username) {
-                                    throw new Error('用户未登录');
-                                }
+                                // 只有在不是从历史记录重新打印时才保存记录
+                                if (!data.fromHistory) {
+                                    const uid = localStorage.getItem('uid');
+                                    const username = localStorage.getItem('username');
+                                    
+                                    if (!uid || !username) {
+                                        throw new Error('用户未登录');
+                                    }
 
-                                // 保存QR码打印记录
-                                await db.collection('printRecords').add({
-                                    userId: uid,
-                                    username: username,
-                                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                                    envio: data.envioNumber,
-                                    id: data.storeInfo,
-                                    qrContent: data.qrContent,
-                                    source: 'index2',  // 标记来源为 index2
-                                    type: 'qr'  // 标记为QR码类型
-                                });
+                                    await db.collection('printRecords').add({
+                                        userId: uid,
+                                        username: username,
+                                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                                        envio: envioNumber,
+                                        id: storeInfo,
+                                        qrContent: qrContent,
+                                        source: 'index2',
+                                        type: 'qr'
+                                    });
+                                }
+                                
+                                // 更新打印按钮状态
+                                printButton.classList.add('printed');
+                                printButton.innerHTML = '<i class="fas fa-check"></i> 已打印';
+                                
+                                // 更新统计信息
+                                updateStats();
+                                
+                            } catch (err) {
+                                console.error('打印失败:', err);
+                                alert('打印失败: ' + err.message);
                             }
-                            
-                            printButton.classList.add('printed');
-                            printButton.innerHTML = '<i class="fas fa-check"></i> 已打印';
-                            updateStats();
-                            
-                        } catch (err) {
-                            console.error('打印或保存记录失败:', err);
-                            alert('打印失败: ' + err.message);
-                        }
-                    }, 500);
+                        }, 500);
+                    };
                 };
                 
                 printWindow.document.close();
             } catch (err) {
                 console.error('打印失败:', err);
-                alert(`打印失败: ${err.message}`);
+                alert('打印失败: ' + err.message);
             }
         }
 
         function handlePrint() {
+            const currentLang = getCurrentLanguage();
+            const trans = translations[currentLang];
+
             if(!zplContent) {
-                alert('请先选择ZPL文件');
+                alert(trans.noFile);
                 return;
             }
 
@@ -1013,7 +1068,7 @@
                         
                     } catch (err) {
                         console.error('打印或保存记录失败:', err);
-                        alert('打印失败: ' + err.message);
+                        alert(trans.printError + ': ' + err.message);
                     }
                 }, 500);
             };
@@ -1040,6 +1095,141 @@
         // 添加返回index页面的函数
         function navigateToIndex() {
             window.location.href = 'index.html';
+        }
+
+        // 添加语言配置
+        const translations = {
+            'zh': {
+                'pageTitle': 'QR码标签打印系统',
+                'printAllButton': '打印全部',
+                'previewButton': '预览标签',
+                'dropZoneText': '将文件拖放到此处，或点击选择文件',
+                'barcodeButton': '条形码',
+                'printButton': '打印',
+                'printedButton': '已打印',
+                'totalLabels': '标签总数',
+                'printedLabels': '已打印',
+                'pendingLabels': '待打印',
+                'printAllButtonLarge': '打印全部',
+                'noFile': '请先选择ZPL文件',
+                'invalidFile': '请选择.txt或.zpl文件',
+                'parseError': '解析文件失败',
+                'printError': '打印失败',
+                'labelTitle': 'ETIQUETA DE VOLUME',  // 保持原样，因为这是固定的标题
+                'unknownProduct': '未知商品'
+            },
+            'pt': {
+                'pageTitle': 'Sistema de Impressão QRcode',
+                'printAllButton': 'Imprimir Tudo',
+                'previewButton': 'Visualizar',
+                'dropZoneText': 'Arraste e solte arquivos aqui ou clique para selecionar',
+                'barcodeButton': 'Código de barras',
+                'printButton': 'Imprimir',
+                'printedButton': 'Impresso',
+                'totalLabels': 'Total de Etiquetas',
+                'printedLabels': 'Impressas',
+                'pendingLabels': 'Pendentes',
+                'printAllButtonLarge': 'Imprimir Tudo',
+                'noFile': 'Selecione um arquivo ZPL primeiro',
+                'invalidFile': 'Selecione um arquivo .txt ou .zpl',
+                'parseError': 'Falha ao analisar arquivo',
+                'printError': 'Falha na impressão',
+                'labelTitle': 'ETIQUETA DE VOLUME',  // 保持原样，因为这是固定的标题
+                'unknownProduct': 'Produto desconhecido'
+            }
+        };
+
+        // 获取当前语言
+        function getCurrentLanguage() {
+            return localStorage.getItem('language') || 'zh';
+        }
+
+        // 切换语言
+        function toggleLanguage() {
+            const currentLang = getCurrentLanguage();
+            const newLang = currentLang === 'zh' ? 'pt' : 'zh';
+            localStorage.setItem('language', newLang);
+            document.getElementById('currentLang').textContent = newLang.toUpperCase();
+            updatePageLanguage();
+        }
+
+        // 更新页面语言
+        function updatePageLanguage() {
+            const currentLang = getCurrentLanguage();
+            const trans = translations[currentLang];
+
+            // 更新页面标题
+            document.querySelector('h2').innerHTML = `<i class="fas fa-qrcode"></i> ${trans.pageTitle}`;
+
+            // 更新按钮文本
+            document.querySelectorAll('.button').forEach(button => {
+                if (button.innerHTML.includes('fa-print')) {
+                    button.innerHTML = `<i class="fas fa-print"></i> ${trans.printAllButton}`;
+                } else if (button.innerHTML.includes('fa-eye')) {
+                    button.innerHTML = `<i class="fas fa-eye"></i> ${trans.previewButton}`;
+                }
+            });
+
+            // 更新文件拖放区域文本
+            document.querySelector('#dropZone p').textContent = trans.dropZoneText;
+
+            // 更新导航按钮
+            document.querySelector('.nav-button').innerHTML = 
+                `<i class="fas fa-barcode"></i> ${trans.barcodeButton}`;
+
+            // 更新统计信息标签
+            document.querySelectorAll('.stat-label').forEach(label => {
+                const text = label.textContent.trim();
+                if (text.includes('标签总数')) {
+                    label.textContent = trans.totalLabels;
+                } else if (text.includes('已打印')) {
+                    label.textContent = trans.printedLabels;
+                } else if (text.includes('待打印')) {
+                    label.textContent = trans.pendingLabels;
+                }
+            });
+
+            // 更新打印全部按钮
+            const printAllButton = document.querySelector('.print-all-button');
+            if (printAllButton) {
+                printAllButton.innerHTML = `<i class="fas fa-print"></i> ${trans.printAllButtonLarge}`;
+            }
+
+            // 更新所有打印按钮
+            document.querySelectorAll('.print-single').forEach(button => {
+                if (button.classList.contains('printed')) {
+                    button.innerHTML = `<i class="fas fa-check"></i> ${trans.printedButton}`;
+                } else {
+                    button.innerHTML = `<i class="fas fa-print"></i> ${trans.printButton}`;
+                }
+            });
+        }
+
+        // 页面加载时初始化语言
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentLang = getCurrentLanguage();
+            document.getElementById('currentLang').textContent = currentLang.toUpperCase();
+            updatePageLanguage();
+        });
+
+        // 添加检查登录状态的函数
+        async function checkLogin() {
+            try {
+                const isLoggedIn = localStorage.getItem('isLoggedIn');
+                const loginExpiry = localStorage.getItem('loginExpiry');
+                
+                if (isLoggedIn && loginExpiry && new Date().getTime() < parseInt(loginExpiry)) {
+                    return true;
+                } else {
+                    localStorage.removeItem('isLoggedIn');
+                    localStorage.removeItem('loginExpiry');
+                    window.location.href = 'index.html';
+                    return false;
+                }
+            } catch (err) {
+                console.error('检查登录状态失败:', err);
+                return false;
+            }
         }
     </script>
 </body>

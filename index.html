@@ -438,29 +438,6 @@
             }
         }
 
-        .beta-badge {
-            background: linear-gradient(45deg, #3498db, #2980b9);
-            color: white;
-            padding: 5px 15px;
-            font-size: 12px;
-            font-weight: 600;
-            box-shadow: 0 2px 10px rgba(52, 152, 219, 0.3);
-            border-radius: 4px;
-            margin-right: 10px;
-            animation: glow 2s ease-in-out infinite;
-        }
-
-        @keyframes glow {
-            0%, 100% {
-                box-shadow: 0 2px 10px rgba(52, 152, 219, 0.3);
-                transform: scale(1);
-            }
-            50% {
-                box-shadow: 0 5px 20px rgba(52, 152, 219, 0.5);
-                transform: scale(1.05);
-            }
-        }
-
         /* 登录界面样式 */
         .login-overlay {
             position: fixed;
@@ -683,6 +660,30 @@
             font-weight: 600;
             color: var(--primary-color);
         }
+
+        /* 语言切换按钮样式 */
+        .language-button {
+            padding: 0.8rem 1.5rem;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .language-button:hover {
+            background: #34495e;
+            transform: translateY(-2px);
+        }
+
+        .language-button i {
+            font-size: 1.2rem;
+        }
     </style>
 </head>
 <body>
@@ -700,7 +701,10 @@
         <div class="header-content">
             <h2><i class="fas fa-tags"></i> ZPL标签打印系统</h2>
             <div class="top-controls">
-                <div class="beta-badge">Beta 0.0001</div>
+                <button class="language-button" onclick="toggleLanguage()">
+                    <i class="fas fa-language"></i>
+                    <span id="currentLang">PT</span>
+                </button>
                 <input type="text" id="storeNameInput" class="store-input" placeholder="输入店名" onchange="updateStoreNames()">
                 <button class="button" onclick="handlePrint()">
                     <i class="fas fa-print"></i> 直接打印
@@ -942,13 +946,17 @@
                 labels.sort((a, b) => {
                     const quantityA = a.quantity || 1;
                     const quantityB = b.quantity || 1;
-                    return quantityB - quantityA; // 数量从大到小排序
+                    return quantityB - quantityA;
                 });
             }
             
             // 重新渲染标签
             const previewDiv = document.getElementById('labelPreview');
             previewDiv.innerHTML = '';
+            
+            // 获取当前语言的翻译
+            const currentLang = getCurrentLanguage();
+            const trans = translations[currentLang];
             
             // 添加标签预览
             labels.forEach(label => {
@@ -974,12 +982,14 @@
                 labelDiv.innerHTML = labelContent;
                 containerDiv.appendChild(labelDiv);
                 
-                // 添加打印按钮
+                // 添加打印按钮（修改这部分）
                 const printButton = document.createElement('button');
                 printButton.className = 'print-single';
+                printButton.setAttribute('data-quantity', label.quantity || 1);
                 printButton.setAttribute('data-sku', label.sku);
-                printButton.innerHTML = `<i class="fas fa-print"></i> 打印 ${label.quantity || 1} 个标签`;
-                printButton.onclick = () => printSingleLabel(label, document.getElementById('storeNameInput')?.value || '');
+                // 使用翻译文本
+                printButton.innerHTML = `<i class="fas fa-print"></i> ${trans.printLabelButton.replace('{n}', label.quantity || 1)}`;
+                printButton.onclick = () => printSingleLabel(label);
                 containerDiv.appendChild(printButton);
                 
                 previewDiv.appendChild(containerDiv);
@@ -1150,6 +1160,7 @@
 
         function printSingleLabel(data) {
             try {
+                // 如果是从历史记录打印，使用传入的事件对象
                 const printButton = data.event?.target || event?.target;
                 if (!printButton) {
                     throw new Error('无法获取打印按钮');
@@ -1158,7 +1169,7 @@
                 const printWindow = window.open('', '_blank');
                 
                 // 获取当前店名
-                const storeName = document.getElementById('storeNameInput')?.value || '';
+                const storeName = document.getElementById('storeNameInput')?.value || data.storeName || '';
                 
                 const printContent = `
                     <!DOCTYPE html>
@@ -1318,11 +1329,14 @@
                             
                             // 更新打印按钮状态
                             printButton.classList.add('printed');
-                            printButton.innerHTML = `<i class="fas fa-check"></i> 已打印 ${data.quantity || 1} 个标签`;
+                            printButton.innerHTML = '<i class="fas fa-check"></i> 已打印';
+                            
+                            // 更新统计信息
+                            updateStats();
                             
                         } catch (err) {
-                            console.error('保存打印记录失败:', err);
-                            alert('保存打印记录失败: ' + err.message);
+                            console.error('打印失败:', err);
+                            alert('打印失败: ' + err.message);
                         }
                     }, 500);
                 };
@@ -1330,7 +1344,7 @@
                 printWindow.document.close();
             } catch (err) {
                 console.error('打印失败:', err);
-                alert(`打印失败: ${err.message}`);
+                alert('打印失败: ' + err.message);
             }
         }
 
@@ -1527,21 +1541,25 @@
             }
         });
 
-        // 添加统计信息更新函数
+        // 修改统计信息更新函数
         function updateStats() {
+            if (!zplContent) return;
+            
             const labels = parseZPL(zplContent);
             const statsContainer = document.getElementById('statsContainer');
             
             if (labels.length > 0) {
                 const totalSKUs = labels.length;
-                const totalLabels = labels.reduce((sum, label) => sum + (label.quantity || 1), 0);
-                // 计算已打印标签的总数
+                const totalLabels = labels.reduce((sum, label) => sum + (parseInt(label.quantity) || 1), 0);
+                
+                // 计算已打印标签的总数（改进计算逻辑）
                 const printedLabels = Array.from(document.querySelectorAll('.print-single.printed'))
                     .reduce((sum, button) => {
-                        // 从按钮文本中提取数量
-                        const match = button.innerHTML.match(/已打印\s*(\d+)\s*个标签/);
-                        return sum + (match ? parseInt(match[1]) : 0);
+                        const quantity = button.getAttribute('data-quantity') || 
+                                       button.textContent.match(/已打印\s*(\d+)\s*个标签/)?.[1] || 1;
+                        return sum + parseInt(quantity);
                     }, 0);
+                    
                 const pendingLabels = totalLabels - printedLabels;
 
                 document.getElementById('totalSKUs').textContent = totalSKUs;
@@ -1814,6 +1832,143 @@
         document.addEventListener('DOMContentLoaded', function() {
             // ... existing DOMContentLoaded code ...
             initDraggableStats();
+        });
+
+        // 添加语言配置
+        const translations = {
+            'zh': {
+                'loginTitle': '登录系统',
+                'username': '用户名',
+                'password': '密码',
+                'loginButton': '登录',
+                'systemTitle': 'ZPL标签打印系统',
+                'storePlaceholder': '输入店名',
+                'printButton': '直接打印',
+                'previewButton': '预览标签',
+                'historyButton': '打印历史',
+                'exportButton': '导出Excel出库单',
+                'logoutButton': '退出登录',
+                'dropZoneText': '将文件拖放到此处，或点击选择文件',
+                'qrcodeButton': 'QRcode',
+                'sortQuantity': '按数量排序',
+                'sortSku': '按SKU排序',
+                'totalSKUs': 'SKU总数',
+                'totalLabels': '标签总数',
+                'printedLabels': '已打印',
+                'pendingLabels': '待打印',
+                'printLabelButton': '打印 {n} 个标签',
+                'printedLabelButton': '已打印 {n} 个标签',
+                'loginError': '用户名或密码错误'  // 添加登录错误信息翻译
+            },
+            'pt': {
+                'loginTitle': 'Sistema de Login',
+                'username': 'Nome de usuário',
+                'password': 'Senha',
+                'loginButton': 'Entrar',
+                'systemTitle': 'Sistema de Impressão ZPL',
+                'storePlaceholder': 'Nome da loja',
+                'printButton': 'Imprimir Direto',
+                'previewButton': 'Visualizar Etiquetas',
+                'historyButton': 'Histórico',
+                'exportButton': 'Exportar Excel',
+                'logoutButton': 'Sair',
+                'dropZoneText': 'Arraste e solte arquivos aqui ou clique para selecionar',
+                'qrcodeButton': 'QRcode',
+                'sortQuantity': 'Ordenar por quantidade',
+                'sortSku': 'Ordenar por SKU',
+                'totalSKUs': 'Total de SKUs',
+                'totalLabels': 'Total de Etiquetas',
+                'printedLabels': 'Impressas',
+                'pendingLabels': 'Pendentes',
+                'printLabelButton': 'Imprimir {n} etiquetas',
+                'printedLabelButton': 'Impresso {n} etiquetas',
+                'loginError': 'Nome de usuário ou senha incorretos'  // 添加登录错误信息翻译
+            }
+        };
+
+        // 获取当前语言
+        function getCurrentLanguage() {
+            return localStorage.getItem('language') || 'zh';
+        }
+
+        // 切换语言
+        function toggleLanguage() {
+            const currentLang = getCurrentLanguage();
+            const newLang = currentLang === 'zh' ? 'pt' : 'zh';
+            localStorage.setItem('language', newLang);
+            document.getElementById('currentLang').textContent = newLang.toUpperCase();
+            updatePageLanguage();
+        }
+
+        // 更新页面语言
+        function updatePageLanguage() {
+            const currentLang = getCurrentLanguage();
+            const trans = translations[currentLang];
+
+            // 更新登录界面
+            document.querySelector('.login-title').textContent = trans.loginTitle;
+            document.querySelector('#username').placeholder = trans.username;
+            document.querySelector('#password').placeholder = trans.password;
+            document.querySelector('.login-button').textContent = trans.loginButton;
+            document.querySelector('#loginError').textContent = trans.loginError;
+
+            // 更新主界面
+            document.querySelector('h2').innerHTML = `<i class="fas fa-tags"></i> ${trans.systemTitle}`;
+            document.querySelector('#storeNameInput').placeholder = trans.storePlaceholder;
+            
+            // 更新按钮文本
+            document.querySelectorAll('.button').forEach(button => {
+                if (button.innerHTML.includes('fa-print')) {
+                    button.innerHTML = `<i class="fas fa-print"></i> ${trans.printButton}`;
+                } else if (button.innerHTML.includes('fa-eye')) {
+                    button.innerHTML = `<i class="fas fa-eye"></i> ${trans.previewButton}`;
+                } else if (button.innerHTML.includes('fa-history')) {
+                    button.innerHTML = `<i class="fas fa-history"></i> ${trans.historyButton}`;
+                } else if (button.innerHTML.includes('fa-sign-out-alt')) {
+                    button.innerHTML = `<i class="fas fa-sign-out-alt"></i> ${trans.logoutButton}`;
+                }
+            });
+
+            // 更新导出按钮
+            document.querySelector('.export-button').innerHTML = 
+                `<i class="fas fa-file-excel"></i> ${trans.exportButton}`;
+
+            // 更新文件拖放区域文本
+            document.querySelector('#dropZone p').textContent = trans.dropZoneText;
+
+            // 更新导航按钮
+            document.querySelector('.nav-button').innerHTML = 
+                `<i class="fas fa-qrcode"></i> ${trans.qrcodeButton}`;
+
+            // 更新排序选择器
+            const sortSelect = document.querySelector('#sortSelect');
+            sortSelect.innerHTML = `
+                <option value="quantity">${trans.sortQuantity}</option>
+                <option value="sku">${trans.sortSku}</option>
+            `;
+
+            // 更新统计信息标签
+            document.querySelectorAll('.stat-label').forEach((label, index) => {
+                const keys = ['totalSKUs', 'totalLabels', 'printedLabels', 'pendingLabels'];
+                label.textContent = trans[keys[index]];
+            });
+
+            // 更新打印按钮文本
+            document.querySelectorAll('.print-single').forEach(button => {
+                const quantity = button.getAttribute('data-quantity');
+                if (button.classList.contains('printed')) {
+                    button.innerHTML = `<i class="fas fa-check"></i> ${trans.printedLabelButton.replace('{n}', quantity)}`;
+                } else {
+                    button.innerHTML = `<i class="fas fa-print"></i> ${trans.printLabelButton.replace('{n}', quantity)}`;
+                }
+            });
+        }
+
+        // 页面加载时初始化语言
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentLang = getCurrentLanguage();
+            document.getElementById('currentLang').textContent = currentLang.toUpperCase();
+            updatePageLanguage();
         });
     </script>
 </body>
