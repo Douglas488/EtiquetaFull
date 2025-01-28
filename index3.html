@@ -485,54 +485,76 @@
         // 修改打印功能
         async function printFromHistory(record) {
             try {
-                // 获取来源页面
                 const source = record.source || 'index';
                 
-                // 创建一个隐藏的 iframe
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                document.body.appendChild(iframe);
-                
-                // 加载对应页面
-                iframe.src = `${source}.html`;
-                
-                iframe.onload = function() {
-                    try {
-                        // 获取 iframe 中的打印函数
-                        const printFunction = iframe.contentWindow.printSingleLabel;
-                        if (printFunction) {
-                            // 创建一个模拟的按钮
-                            const mockButton = document.createElement('button');
-                            mockButton.className = 'print-single';
-                            
-                            // 准备打印数据
-                            const printData = {
-                                ...record,
-                                fromHistory: true,
-                                event: {
-                                    target: mockButton
-                                }
-                            };
-
-                            // 调用打印函数
-                            printFunction.call(iframe.contentWindow, printData);
-                        } else {
-                            throw new Error('未找到打印函数');
-                        }
+                // 创建一个Promise来处理iframe加载
+                const loadIframe = () => {
+                    return new Promise((resolve, reject) => {
+                        const iframe = document.createElement('iframe');
+                        iframe.style.display = 'none';
                         
-                        // 清理 iframe
-                        setTimeout(() => {
-                            document.body.removeChild(iframe);
-                        }, 2000);  // 增加延时以确保打印完成
-                    } catch (err) {
-                        console.error('调用打印函数失败:', err);
-                        alert('打印失败: ' + err.message);
-                        document.body.removeChild(iframe);
-                    }
+                        iframe.onload = () => resolve(iframe);
+                        iframe.onerror = () => reject(new Error('iframe加载失败'));
+                        
+                        document.body.appendChild(iframe);
+                        iframe.src = `${source}.html`;
+                    });
                 };
+
+                // 等待iframe加载完成
+                const iframe = await loadIframe();
+                
+                // 确保iframe内容完全加载
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                try {
+                    // 检查iframe是否正确加载
+                    if (!iframe.contentWindow || !iframe.contentWindow.document) {
+                        throw new Error('iframe内容未正确加载');
+                    }
+
+                    // 获取打印函数
+                    const printFunction = iframe.contentWindow.printSingleLabel;
+                    if (!printFunction) {
+                        throw new Error('未找到打印函数');
+                    }
+
+                    // 创建模拟按钮
+                    const mockButton = document.createElement('button');
+                    mockButton.className = 'print-single';
+                    
+                    // 准备打印数据
+                    const printData = {
+                        ...record,
+                        fromHistory: true,
+                        event: {
+                            target: mockButton
+                        }
+                    };
+
+                    // 调用打印函数
+                    await printFunction.call(iframe.contentWindow, printData);
+                    
+                    // 打印完成后延迟移除iframe
+                    setTimeout(() => {
+                        if (iframe && iframe.parentNode) {
+                            iframe.parentNode.removeChild(iframe);
+                        }
+                    }, 2000);
+
+                } catch (err) {
+                    console.error('打印过程出错:', err);
+                    if (iframe && iframe.parentNode) {
+                        iframe.parentNode.removeChild(iframe);
+                    }
+                    throw err;
+                }
+
             } catch (err) {
                 console.error('打印失败:', err);
-                alert('打印失败: ' + err.message);
+                const currentLang = getCurrentLanguage();
+                const trans = translations[currentLang];
+                alert(trans.printError + ': ' + err.message);
             }
         }
 
